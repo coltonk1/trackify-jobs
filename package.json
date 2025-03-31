@@ -1,6 +1,0 @@
-{
-    "type": "module",
-    "dependencies": {
-        "pdfjs-dist": "^5.0.375"
-    }
-}
