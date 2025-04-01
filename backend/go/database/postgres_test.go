@@ -3,8 +3,8 @@ package database
 import (
 	"database/sql"
 	"errors"
-	"go-template/models"
 	"testing"
+	"trackify-jobs/models"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"

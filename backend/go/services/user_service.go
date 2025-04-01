@@ -1,8 +1,8 @@
 package services
 
 import (
-	"go-template/database"
-	"go-template/models"
+	"trackify-jobs/database"
+	"trackify-jobs/models"
 )
 
 // UserService is responsible for handling user-related business logic.

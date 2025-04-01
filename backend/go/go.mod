@@ -1,6 +1,8 @@
-module go-template
+module trackify-jobs
 
-go 1.22.5
+go 1.23
+
+toolchain go1.23.4
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.2.2
@@ -9,6 +11,8 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/stretchr/testify v1.10.0
 )
+
+require github.com/resend/resend-go/v2 v2.17.0 // indirect
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2

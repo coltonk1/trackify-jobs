@@ -2,10 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
-	"go-template/models"
-	"go-template/services"
 	"net/http"
 	"strconv"
+	"trackify-jobs/models"
+	"trackify-jobs/services"
 )
 
 // UserHandler is a struct that holds a reference to the UserService,

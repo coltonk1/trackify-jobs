@@ -1,13 +1,13 @@
 package main
 
 import (
-	"go-template/config"
-	"go-template/database"
-	"go-template/handlers"
-	"go-template/middleware"
-	"go-template/services"
 	"log"
 	"net/http"
+	"trackify-jobs/config"
+	"trackify-jobs/database"
+	"trackify-jobs/handlers"
+	"trackify-jobs/middleware"
+	"trackify-jobs/services"
 
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
@@ -37,6 +37,10 @@ func main() {
 	userService := services.NewUserService(db)
 	// Create HTTP handlers for user-related requests
 	userHandler := handlers.NewUserHandler(userService)
+
+	emailService := services.NewEmailService("")
+	defer emailService.Stop()
+	// reminderService := services.NewReminderService(db, emailService)
 
 	// Create a new Gorilla Mux router for handling HTTP routes
 	r := mux.NewRouter()
