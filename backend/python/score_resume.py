@@ -1,10 +1,10 @@
 import torch
 from transformers import AutoTokenizer, AutoModel
-import json
+import pdfplumber
 import torch.nn.functional as F
 import os
 
-def amplify_similarity(similarity, threshold=0.8, lower_power=1.25, upper_power=3):
+def amplify_similarity(similarity, threshold=0.8, lower_power=1.25, upper_power=2):
     if similarity < threshold:
         return similarity ** upper_power
     elif similarity > threshold:
@@ -27,14 +27,33 @@ def get_embeddings(text):
         embeddings = outputs.last_hidden_state.mean(dim=1) 
     return embeddings
 
+
+#########
+# Might end up using some form of parsing before testing to get a lower token count, count be used with smaller models for faster computation
+#########
+# resume_folder = './resumes/'
+# resumes = []
+# for resume_file in os.listdir(resume_folder):
+#     if resume_file.endswith(".json"):
+#         with open(os.path.join(resume_folder, resume_file), 'r') as file:
+#             data = json.load(file)
+#             json_string = json.dumps(data, indent=4)
+#             resumes.append((resume_file, json_string))
+
 resume_folder = './resumes/'
 resumes = []
+
 for resume_file in os.listdir(resume_folder):
-    if resume_file.endswith(".json"):
-        with open(os.path.join(resume_folder, resume_file), 'r') as file:
-            data = json.load(file)
-            json_string = json.dumps(data, indent=4)
-            resumes.append((resume_file, json_string))
+    if resume_file.endswith(".pdf"):
+        pdf_path = os.path.join(resume_folder, resume_file)
+        try:
+            with pdfplumber.open(pdf_path) as pdf:
+                text = ""
+                for page in pdf.pages:
+                    text += page.extract_text(x_tolerance=1.5, y_tolerance=3.0) + "\n"
+                resumes.append((resume_file, text.strip()))
+        except Exception as e:
+            print(f"Error reading {resume_file}: {e}")
 
 job_desc_embeddings = get_embeddings(job_description)
 
