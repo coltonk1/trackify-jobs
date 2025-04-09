@@ -14,3 +14,7 @@
 .animate-rotate {
   animation: rotate 120s linear infinite;
 }
+
+#navbar {
+  background: linear-gradient(to right, #9242d7, #a653da, #9242d7);
+}

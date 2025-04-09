@@ -20,8 +20,8 @@ func CORSMiddleware(next http.Handler) http.Handler {
 		// If the incoming request is an OPTIONS request (preflight request), respond with a 200 OK status.
 		// This is necessary for handling certain types of CORS requests.
 		if r.Method == "OPTIONS" {
-				w.WriteHeader(http.StatusOK)
-				return
+			w.WriteHeader(http.StatusOK)
+			return
 		}
 
 		// Continue processing the request by passing it to the next handler in the chain.

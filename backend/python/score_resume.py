@@ -1,71 +1,92 @@
+from flask import Flask, request, jsonify
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import torch
 from transformers import AutoTokenizer, AutoModel
 import pdfplumber
 import torch.nn.functional as F
-import os
+from io import BytesIO
+import clamav
 
-def amplify_similarity(similarity, threshold=0.8, lower_power=1.25, upper_power=2):
+app = Flask(__name__)
+limiter = Limiter(
+    app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"]
+)
+
+### Constants and Device Setup
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+CLASSIFIER_NAME = 'jjzha/jobbert_skill_extraction'
+
+### Functions
+def amplify_similarity(similarity, threshold=0.8, lower_power=1, upper_power=2):
+    """Amplifies similarity scores based on a threshold."""
     if similarity < threshold:
         return similarity ** upper_power
     elif similarity > threshold:
         return similarity ** lower_power
     else:
         return similarity
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-tokenizer = AutoTokenizer.from_pretrained('intfloat/e5-base-v2')
-model = AutoModel.from_pretrained('intfloat/e5-base-v2').to(device)
-
-with open('./job_description.txt', 'r') as file:
-    job_description = file.read()
-
-def get_embeddings(text):
+def get_embeddings(text, tokenizer, model):
+    """Gets embeddings for a given text."""
     tokens = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
-    tokens = {key: value.to(device) for key, value in tokens.items()} 
+    tokens = {key: value.to(DEVICE) for key, value in tokens.items()} 
     with torch.no_grad():
         outputs = model(**tokens)
         embeddings = outputs.last_hidden_state.mean(dim=1) 
     return embeddings
 
+def extract_text_from_pdf(pdf_file):
+    """Extracts text from a PDF file."""
+    try:
+        with pdfplumber.open(pdf_file) as pdf:
+            return "\n".join(page.extract_text(x_tolerance=1.5, y_tolerance=3.0) for page in pdf.pages)
+    except Exception as e:
+        print(f"Error reading PDF: {e}")
+        return None
 
-#########
-# Might end up using some form of parsing before testing to get a lower token count, count be used with smaller models for faster computation
-#########
-# resume_folder = './resumes/'
-# resumes = []
-# for resume_file in os.listdir(resume_folder):
-#     if resume_file.endswith(".json"):
-#         with open(os.path.join(resume_folder, resume_file), 'r') as file:
-#             data = json.load(file)
-#             json_string = json.dumps(data, indent=4)
-#             resumes.append((resume_file, json_string))
-
-resume_folder = './resumes/'
-resumes = []
-
-for resume_file in os.listdir(resume_folder):
-    if resume_file.endswith(".pdf"):
-        pdf_path = os.path.join(resume_folder, resume_file)
-        try:
-            with pdfplumber.open(pdf_path) as pdf:
-                text = ""
-                for page in pdf.pages:
-                    text += page.extract_text(x_tolerance=1.5, y_tolerance=3.0) + "\n"
-                resumes.append((resume_file, text.strip()))
-        except Exception as e:
-            print(f"Error reading {resume_file}: {e}")
-
-job_desc_embeddings = get_embeddings(job_description)
-
-ranked_resumes = []
-for resume_file, resume_text in resumes:
-    resume_embeddings = get_embeddings(resume_text)
+@app.route('/rank-resumes', methods=['POST'])
+@limiter.limit("10 per minute")
+def rank_resumes():
+    file = request.files['file']
+    if not file.filename.endswith('.pdf'):
+        return jsonify({'error': 'Only PDF files are allowed'}), 400
+    if file.mimetype != 'application/pdf':
+        return jsonify({'error': 'Only PDF files are allowed'}), 400
+    clamav.init()
+    if clamav.scan_file(file.stream):
+        return jsonify({'error': 'File contains malware'}), 400
+    if file.content_length > 5 * 1024 * 1024:
+        return jsonify({'error': 'File size exceeds 5MB limit'}), 413
     
+    job_description = request.form.get('job_description', '')
+    if not isinstance(job_description, str):
+        return jsonify({'error': 'Job description must be a string'}), 400
+    if len(job_description) > 1000:
+        return jsonify({'error': 'Job description is too long'}), 400
+
+    # Load model and tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(CLASSIFIER_NAME)
+    model = AutoModel.from_pretrained(CLASSIFIER_NAME).to(DEVICE)
+
+    # Get job description embeddings
+    job_desc_embeddings = get_embeddings(job_description, tokenizer, model)
+
+    # Extract text from PDF
+    pdf_file = BytesIO(file.stream.read())
+    resume_text = extract_text_from_pdf(pdf_file)
+
+    # Get resume embeddings
+    resume_embeddings = get_embeddings(resume_text, tokenizer, model)
+
+    # Calculate similarity
     similarity = F.cosine_similarity(resume_embeddings, job_desc_embeddings)
     scaled_similarity = amplify_similarity(similarity)
-    ranked_resumes.append((resume_file, scaled_similarity.item()))
 
-ranked_resumes.sort(key=lambda x: x[1], reverse=True)
+    # Return result
+    return jsonify({'similarity': scaled_similarity.item()})
 
-for resume, score in ranked_resumes:
-    print(f"Resume: {resume}, Similarity Score: {score:.4f}")
+if __name__ == '__main__':
+    app.run(debug=True)
