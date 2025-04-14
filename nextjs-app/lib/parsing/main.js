@@ -1,11 +1,9 @@
-import path from 'path';
 import 'pdfjs-dist/legacy/build/pdf.mjs';
-import { pathToFileURL } from 'url';
 
-const workerPath = path.resolve(
-  'node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs'
-);
-pdfjsLib.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).href;
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/legacy/build/pdf.worker.min.mjs',
+  import.meta.url
+).href;
 
 // prettier-ignore
 const BULLET_POINTS = [
@@ -433,27 +431,54 @@ function getSubSections(section, page) {
   return sections;
 }
 
-async function main() {
-  const filePath = 'example3.pdf';
-  const loadingTask = pdfjsLib.getDocument(filePath);
+// async function main() {
+//   const filePath = 'example3.pdf';
+//   const loadingTask = pdfjsLib.getDocument(filePath);
+//   const pdfDocument = await loadingTask.promise;
+//   const page = await pdfDocument.getPage(1);
+
+//   const CLEANED_ITEMS = await getCleanedItems(page).catch((err) =>
+//     console.log('Error extracting from pdf', err)
+//   );
+
+//   const FOUND_SECTIONS = await getSectionsFromCleanedItems(
+//     CLEANED_ITEMS,
+//     page
+//   ).catch((err) => console.log('Error extracting from pdf', err));
+
+//   const WORK_EXPERIENCE = await getWorkExperience(FOUND_SECTIONS, page);
+//   console.log(WORK_EXPERIENCE);
+
+//   console.log('PROJECTS');
+//   const PROJECTS = await getProjects(FOUND_SECTIONS, page);
+//   console.log(PROJECTS);
+// }
+
+// main();
+
+export async function parseResumeData(pdfArrayBuffer) {
+  const loadingTask = pdfjsLib.getDocument({ data: pdfArrayBuffer });
   const pdfDocument = await loadingTask.promise;
   const page = await pdfDocument.getPage(1);
 
-  const CLEANED_ITEMS = await getCleanedItems(page).catch((err) =>
-    console.log('Error extracting from pdf', err)
-  );
+  const CLEANED_ITEMS = await getCleanedItems(page).catch((err) => {
+    console.error('Error extracting cleaned items from PDF:', err);
+    return [];
+  });
 
   const FOUND_SECTIONS = await getSectionsFromCleanedItems(
     CLEANED_ITEMS,
     page
-  ).catch((err) => console.log('Error extracting from pdf', err));
+  ).catch((err) => {
+    console.error('Error extracting sections from PDF:', err);
+    return {};
+  });
 
   const WORK_EXPERIENCE = await getWorkExperience(FOUND_SECTIONS, page);
-  console.log(WORK_EXPERIENCE);
-
-  console.log('PROJECTS');
   const PROJECTS = await getProjects(FOUND_SECTIONS, page);
-  console.log(PROJECTS);
-}
 
-main();
+  return {
+    workExperience: WORK_EXPERIENCE,
+    projects: PROJECTS,
+  };
+}
