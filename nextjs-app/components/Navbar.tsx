@@ -1,4 +1,6 @@
+import { useAuth } from '@/lib/authContext';
 import Link from 'next/link';
+import UserSection from './UserSection';
 
 interface LinkType {
   href: string;
@@ -34,20 +36,7 @@ const Navbar = () => {
           ))}
         </ul>
         <ul className="flex space-x-4">
-          <li>
-            <Link href={'/login'}>
-              <span className="transition duration-300 px-4 py-2 text-white hover:bg-orange-500 hover:text-white rounded-md">
-                Log in
-              </span>
-            </Link>
-          </li>
-          <li>
-            <Link href={'/signup'}>
-              <span className="transition duration-300 border-2 border-white text-white px-4 py-2 rounded-md hover:bg-orange-500 hover:text-white">
-                Sign up
-              </span>
-            </Link>
-          </li>
+          <UserSection />
         </ul>
       </div>
       <div className="bg-gradient-to-r from-transparent via-[#fff3] to-transparent w-full h-[2px] absolute bottom-0"></div>

@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata } from 'next';
 // import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import './globals.css';
+import Navbar from '@/components/Navbar';
+import Footer from '@/components/Footer';
+import AuthWrapper from '@/components/AuthWrapper';
 
 // const geistSans = Geist({
 //     variable: "--font-geist-sans",
@@ -15,22 +16,24 @@ import Footer from "../components/Footer";
 // });
 
 export const metadata: Metadata = {
-    title: "App Title",
-    description: "App descriptino",
+  title: 'App Title',
+  description: 'App descriptino',
 };
 
 export default function RootLayout({
-    children,
+  children,
 }: Readonly<{
-    children: React.ReactNode;
+  children: React.ReactNode;
 }>) {
-    return (
-        <html lang="en">
-            <body className={`antialiased min-h-screen flex flex-col`}>
-                <Navbar />
-                {children}
-                <Footer />
-            </body>
-        </html>
-    );
+  return (
+    <html lang="en">
+      <body className={`antialiased min-h-screen flex flex-col`}>
+        <AuthWrapper>
+          <Navbar />
+          {children}
+          <Footer />
+        </AuthWrapper>
+      </body>
+    </html>
+  );
 }

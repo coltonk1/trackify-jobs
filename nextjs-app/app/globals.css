@@ -18,3 +18,8 @@
 #navbar {
   background: linear-gradient(to right, #9242d7, #a653da, #9242d7);
 }
+
+.react-pdf__Page__canvas {
+  width: 100% !important;
+  height: auto !important;
+}

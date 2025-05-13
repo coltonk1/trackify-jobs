@@ -1,0 +1,6 @@
+CREATE TABLE resumes (
+    id SERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
