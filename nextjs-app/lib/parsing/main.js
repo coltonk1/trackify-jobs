@@ -32,7 +32,6 @@ const extractBulletPoints = (section) => {
   if (currentItem) {
     bulletPoints.push(currentItem);
   }
-
   let result = [];
   let current = [];
 
@@ -208,7 +207,8 @@ async function getWorkExperience(SECTIONS, page) {
       [hasLettersOrSpace, 10],
       [hasComma, -5],
       [hasText(date[0].str), -5],
-      [hasText(job[0].str), -5],
+      [hasText(job[0].str), -10],
+      [hasMonth, -5],
     ]);
     let bullets = extractBulletPoints(subsection);
 
@@ -216,7 +216,7 @@ async function getWorkExperience(SECTIONS, page) {
       job_title: job[0].str,
       date: date[0].str,
       company: company[0].str,
-      description: bullets,
+      description: bullets.join('\n'),
     });
   });
 
@@ -284,13 +284,13 @@ async function getProjects(SECTIONS, page) {
       [hasSeason, 1],
       [hasPresent, 1],
       [hasYear, 1],
+      [hasMoreThanFiveWords, -10],
     ]);
     let bullets = extractBulletPoints(subsection);
-
     output.push({
       title: title[0].str,
       date: date[0].str,
-      description: bullets,
+      description: bullets.join('\n'),
     });
   });
 
@@ -456,6 +456,24 @@ function getSubSections(section, page) {
 
 // main();
 
+export async function readFile(pdfArrayBuffer) {
+  const loadingTask = pdfjsLib.getDocument({ data: pdfArrayBuffer });
+  const pdfDocument = await loadingTask.promise;
+  const page = await pdfDocument.getPage(1);
+
+  const CLEANED_ITEMS = await getCleanedItems(page).catch((err) => {
+    console.error('Error extracting cleaned items from PDF:', err);
+    return [];
+  });
+
+  const allWords = [];
+  CLEANED_ITEMS.flat().forEach((item) => {
+    allWords.push(item.str);
+  });
+
+  return allWords.join('\n');
+}
+
 export async function parseResumeData(pdfArrayBuffer) {
   const loadingTask = pdfjsLib.getDocument({ data: pdfArrayBuffer });
   const pdfDocument = await loadingTask.promise;
@@ -473,6 +491,8 @@ export async function parseResumeData(pdfArrayBuffer) {
     console.error('Error extracting sections from PDF:', err);
     return {};
   });
+
+  console.log(FOUND_SECTIONS);
 
   const WORK_EXPERIENCE = await getWorkExperience(FOUND_SECTIONS, page);
   const PROJECTS = await getProjects(FOUND_SECTIONS, page);

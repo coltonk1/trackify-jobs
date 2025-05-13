@@ -5,7 +5,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
-import { parseResumeData } from '@/lib/parsing/main';
+import { parseResumeData, readFile } from '@/lib/parsing/main';
+import { getAuth } from 'firebase/auth';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.mjs',
@@ -50,14 +51,23 @@ const Main = () => {
     workExperience: any[];
     projects?: any[];
   }>();
+  const [rawFile, setRawFile] = useState<File | null>(null);
 
-  const handleFileChange = async (event: any) => {
-    const arrayBuffer = await event.target.files[0].arrayBuffer();
+  const handleFileChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const arrayBuffer = await file.arrayBuffer();
     const resumeData = await parseResumeData(arrayBuffer);
+
     setResumeData(resumeData);
-    setPdfFile(URL.createObjectURL(event.target.files[0]));
-    setPdfName(event.target.files[0].name);
+    setPdfFile(URL.createObjectURL(file));
+    setPdfName(file.name);
+    setRawFile(file);
   };
+
   return (
     <>
       <Head>
@@ -108,36 +118,7 @@ const Main = () => {
           </div>
 
           <div className="flex-2 ">
-            <ResumeTabs />
-
-            <h1>Work Experience</h1>
-            {resumeData?.workExperience?.map((item, index) => (
-              <div
-                key={index}
-                className="mb-4 p-4 border border-gray-200 rounded"
-              >
-                {Object.entries(item).map(([key, value]) => (
-                  <div key={key} className="mb-1">
-                    <strong className="capitalize">{key}:</strong>{' '}
-                    {String(value)}
-                  </div>
-                ))}
-              </div>
-            ))}
-            <h1>Projects</h1>
-            {resumeData?.projects?.map((item, index) => (
-              <div
-                key={index}
-                className="mb-4 p-4 border-gray-200 border rounded"
-              >
-                {Object.entries(item).map(([key, value]) => (
-                  <div key={key} className="mb-1">
-                    <strong className="capitalize">{key}:</strong>{' '}
-                    {String(value)}
-                  </div>
-                ))}
-              </div>
-            ))}
+            <ResumeTabs resumeData={resumeData} rawFile={rawFile} />
           </div>
         </section>
       </div>
@@ -145,20 +126,270 @@ const Main = () => {
   );
 };
 
-function ResumeTabs() {
+function KeywordAnalysis({ resumeData }) {
+  return (
+    <>
+      <h1>Work Experience</h1>
+      {resumeData?.workExperience?.map((item, index) => (
+        <div key={index} className="mb-4 p-4 border border-gray-200 rounded">
+          {Object.entries(item).map(([key, value]) => (
+            <div key={key} className="mb-1">
+              <strong className="capitalize">{key}:</strong> {String(value)}
+            </div>
+          ))}
+        </div>
+      ))}
+      <h1>Projects</h1>
+      {resumeData?.projects?.map((item, index) => (
+        <div key={index} className="mb-4 p-4 border-gray-200 border rounded">
+          {Object.entries(item).map(([key, value]) => (
+            <div key={key} className="mb-1">
+              <strong className="capitalize">{key}:</strong> {String(value)}
+            </div>
+          ))}
+        </div>
+      ))}
+    </>
+  );
+}
+
+function ResumeScoring({ file }: { file: File }) {
+  const [jobDesc, setJobDesc] = useState('');
+  const [score, setScore] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    setError(null);
+    const formData = new FormData();
+
+    const auth = getAuth();
+    const user = auth.currentUser;
+
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    formData.append('file', file);
+    formData.append('job_description', jobDesc);
+
+    try {
+      const idToken = await user.getIdToken();
+
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(errorText || 'Server error');
+      }
+
+      const data = await res.json();
+      console.log(data);
+      setScore(data.similarity ?? 'No score returned');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <label className="block mb-2 font-medium">Job Description</label>
+      <textarea
+        value={jobDesc}
+        onChange={(e) => setJobDesc(e.target.value)}
+        className="w-full p-2 border border-gray-300 rounded mb-4"
+        rows={5}
+        placeholder="Paste the job description here..."
+      />
+
+      <button
+        onClick={handleSubmit}
+        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+        disabled={loading || !jobDesc}
+      >
+        {loading ? 'Analyzing...' : 'Submit'}
+      </button>
+
+      {score && <p className="mt-4 font-semibold">Score: {score}</p>}
+      {error && <p className="mt-4 text-red-500">Error: {error}</p>}
+    </div>
+  );
+}
+
+function ResumeSuggestions({ file }) {
+  const [jobDescription, setJobDescription] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  type StructuredSuggestions = {
+    missing_skills?: string[];
+    keyword_gaps?: string[];
+    experience_alignment?: string[];
+    general_advice?: string[];
+  };
+
+  const [suggestions, setSuggestions] = useState<StructuredSuggestions | null>(
+    null
+  );
+
+  const handleGetSuggestions = async () => {
+    if (!file || !jobDescription.trim()) return;
+
+    setLoading(true);
+    setError(null);
+    setSuggestions(null);
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const resumeText = await readFile(arrayBuffer); // your custom function
+
+      const auth = getAuth();
+      const user = auth.currentUser;
+      if (!user) throw new Error('User not authenticated');
+
+      const idToken = await user.getIdToken();
+      const res = await fetch('/api/suggestions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          resume_text: resumeText,
+          job_description: jobDescription,
+        }),
+      });
+
+      if (!res.ok) throw new Error(await res.text());
+
+      const data = await res.json();
+      let raw = data.suggestions;
+      if (typeof raw === 'string') {
+        // Remove ```json or ``` and surrounding backticks
+        raw = raw
+          .trim()
+          .replace(/^```(?:json)?/, '') // remove starting ``` or ```json
+          .replace(/```$/, '') // remove ending ```
+          .trim();
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        setSuggestions(parsed as StructuredSuggestions);
+      } catch {
+        setSuggestions(null);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to analyze resume');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 p-4 border rounded shadow bg-white">
+      <label className="block mb-2 font-medium text-gray-700">
+        Paste Job Description:
+      </label>
+      <textarea
+        className="w-full h-40 p-2 border border-gray-300 rounded resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+        value={jobDescription}
+        onChange={(e) => setJobDescription(e.target.value)}
+        placeholder="Enter job description here..."
+      />
+
+      <button
+        onClick={handleGetSuggestions}
+        disabled={loading || !file || !jobDescription.trim()}
+        className="mt-3 px-4 py-2 bg-blue-600 text-white font-medium rounded hover:bg-blue-700 transition disabled:opacity-50"
+      >
+        {loading ? 'Analyzing...' : 'Get Suggestions'}
+      </button>
+
+      {error && <p className="text-red-500 mt-2">Error: {error}</p>}
+
+      {suggestions && (
+        <div className="mt-6">
+          <h3 className="text-lg font-semibold mb-4">Suggested Improvements</h3>
+
+          {suggestions.missing_skills?.length > 0 && (
+            <div className="mb-4">
+              <h4 className="text-md font-semibold text-red-600 mb-1">
+                Missing Skills
+              </h4>
+              <ul className="list-disc list-inside text-sm text-gray-800">
+                {suggestions.missing_skills.map((skill, idx) => (
+                  <li key={`ms-${idx}`}>{skill}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {suggestions.keyword_gaps?.length > 0 && (
+            <div className="mb-4">
+              <h4 className="text-md font-semibold text-yellow-600 mb-1">
+                Keyword Gaps
+              </h4>
+              <ul className="list-disc list-inside text-sm text-gray-800">
+                {suggestions.keyword_gaps.map((keyword, idx) => (
+                  <li key={`kg-${idx}`}>{keyword}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {suggestions.experience_alignment?.length > 0 && (
+            <div className="mb-4">
+              <h4 className="text-md font-semibold text-blue-600 mb-1">
+                Experience Alignment
+              </h4>
+              <ul className="list-disc list-inside text-sm text-gray-800">
+                {suggestions.experience_alignment.map((note, idx) => (
+                  <li key={`ea-${idx}`}>{note}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {suggestions.general_advice?.length > 0 && (
+            <div>
+              <h4 className="text-md font-semibold text-green-600 mb-1">
+                General Advice
+              </h4>
+              <ul className="list-disc list-inside text-sm text-gray-800">
+                {suggestions.general_advice.map((tip, idx) => (
+                  <li key={`ga-${idx}`}>{tip}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResumeTabs({ resumeData, rawFile }) {
   const [activeTab, setActiveTab] = useState('keyword');
 
   return (
     <div className="w-full">
-      <div className="flex border-b border-gray-200 mb-4">
+      <div className="flex space-x-6 border-b border-gray-200 mb-4">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2 -mb-px font-medium transition-all border-b-2 cursor-pointer ${
+            className={`pb-2 text-sm font-semibold transition-colors duration-200 border-b-2 cursor-pointer ${
               activeTab === tab.id
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-blue-500'
+                ? 'border-blue-600 text-blue-700'
+                : 'border-transparent text-gray-500 hover:text-blue-600 hover:border-blue-400'
             }`}
           >
             {tab.label}
@@ -166,10 +397,10 @@ function ResumeTabs() {
         ))}
       </div>
 
-      <div className="p-4 bg-white rounded-lg shadow-sm border border-gray-200">
-        {activeTab === 'keyword' && <div>keyword</div>}
-        {activeTab === 'score' && <div>score</div>}
-        {activeTab === 'suggestions' && <div>suggestions</div>}
+      <div className="">
+        {activeTab === 'keyword' && <KeywordAnalysis resumeData={resumeData} />}
+        {activeTab === 'score' && rawFile && <ResumeScoring file={rawFile} />}
+        {activeTab === 'suggestions' && <ResumeSuggestions file={rawFile} />}
       </div>
     </div>
   );

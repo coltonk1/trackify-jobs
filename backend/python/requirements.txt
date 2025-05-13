@@ -1,0 +1,6 @@
+flask
+flask_limiter
+torch
+transformers
+pdfplumber
+clamd

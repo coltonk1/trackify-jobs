@@ -1,0 +1,28 @@
+services:
+  go-backend:
+    build:
+      context: ./backend/go
+    ports:
+      - '8080:8080'
+    env_file:
+      - ./backend/go/.env
+    depends_on:
+      - python-ml
+
+  python-ml:
+    build:
+      context: ./backend/python
+    ports:
+      - '5000:5000'
+    env_file:
+      - ./backend/python/.env
+
+  nextjs-app:
+    build:
+      context: ./nextjs-app
+    ports:
+      - '3000:3000'
+    env_file:
+      - ./nextjs-app/.env
+    depends_on:
+      - go-backend
