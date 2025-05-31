@@ -1,5 +1,9 @@
 import { auth } from './firebase';
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import {
+  GoogleAuthProvider,
+  signInWithPopup,
+  getAdditionalUserInfo,
+} from 'firebase/auth';
 
 export const signInWithGoogle = async () => {
   const provider = new GoogleAuthProvider();
@@ -7,8 +11,9 @@ export const signInWithGoogle = async () => {
   try {
     const result: any = await signInWithPopup(auth, provider);
     const user = result.user;
-    const isNewUser = result._tokenResponse?.isNewUser;
 
+    const isNewUser = getAdditionalUserInfo(result)?.isNewUser;
+    console.log(isNewUser);
     // Get Firebase ID token
     const idToken = await user.getIdToken();
 
@@ -19,8 +24,6 @@ export const signInWithGoogle = async () => {
         Authorization: `Bearer ${idToken}`,
       },
     });
-
-    console.log(await response.json());
 
     return { user, isNewUser };
   } catch (err) {

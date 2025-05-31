@@ -273,3 +273,19 @@ func (db *PostgresDB) GetResumeByID(id int) (*models.Resume, error) {
 	}
 	return &r, nil
 }
+
+func (db *PostgresDB) CreateNewStripeUser(userID, stripeCustomerID string) error {
+	query := `
+		INSERT INTO user_stripe (user_id, stripe_customer_id)
+		VALUES ($1, $2)
+		ON CONFLICT (user_id) DO NOTHING;
+	`
+	_, err := db.Exec(query, userID, stripeCustomerID)
+	return err
+}
+
+func (db *PostgresDB) SetUserPlan(stripeCustomerID, plan string) error {
+	query := `UPDATE user_stripe SET plan = $1 WHERE stripe_customer_id = $2`
+	_, err := db.Exec(query, plan, stripeCustomerID)
+	return err
+}

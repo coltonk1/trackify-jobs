@@ -73,16 +73,22 @@ func main() {
 	resumeService := services.NewResumeService(db, cfg.ResumeFolder)
 	resumeHandler := handlers.NewResumeHandler(resumeService)
 	suggestionsHandler := handlers.NewSuggestionsHandler(suggestionService)
+
+	stripeService := services.NewStripeService(db)
+	stripeHandler := handlers.NewStripeHandler(authClient, stripeService)
+
 	// Setup router
 	router := mux.NewRouter()
 	// router.Handle("/protected", middleware.FirebaseMiddleware(
 	// 	http.HandlerFunc(handlers.ProtectedEndpoint),
 	// ))
-
+	webhookHandler := handlers.NewStripeWebhookHandler(db)
 	api := router.PathPrefix("/api").Subrouter()
 	// Public routes (no auth)
 	api.HandleFunc("/set-cookie", handlers.SetAuthCookie).Methods("POST")
 	api.HandleFunc("/logout", handlers.Logout).Methods("POST")
+	api.HandleFunc("/init-user", stripeHandler.CreateNewUserHandler).Methods("POST")
+	api.HandleFunc("/stripe/webhook", webhookHandler.Handle)
 
 	// Protected routes
 	protected := api.PathPrefix("").Subrouter()

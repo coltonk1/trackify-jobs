@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { getAuth, getIdToken, signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import { signInWithGoogle } from '@/lib/authServices';
 
@@ -23,6 +23,20 @@ const LoginPage = () => {
 
       const user = getAuth().currentUser;
       const token = await user?.getIdToken();
+
+      if (user) {
+        const idToken = await getIdToken(user, true);
+        try {
+          await fetch('/api/init-user', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${idToken}`,
+            },
+          });
+        } catch (err) {
+          console.error('Failed to initialize user:', err);
+        }
+      }
 
       if (token) {
         await fetch('/api/set-cookie', {
@@ -49,6 +63,20 @@ const LoginPage = () => {
 
       const user = getAuth().currentUser;
       const token = await user?.getIdToken();
+
+      if (user) {
+        const idToken = await getIdToken(user, true);
+        try {
+          await fetch('/api/init-user', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${idToken}`,
+            },
+          });
+        } catch (err) {
+          console.error('Failed to initialize user:', err);
+        }
+      }
 
       if (token) {
         await fetch('/api/set-cookie', {
