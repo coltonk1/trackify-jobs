@@ -10,7 +10,7 @@ import (
 var nlpService *services.NLPService
 
 func init() {
-	nlpService = services.NewNLPService()
+	nlpService = services.NewNLPService(20)
 }
 
 func UploadHandler(w http.ResponseWriter, r *http.Request) {

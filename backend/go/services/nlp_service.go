@@ -11,99 +11,55 @@ import (
 
 // NLPRequest represents a file + job description to be processed.
 type NLPRequest struct {
-	File         multipart.File
-	FileHeader   *multipart.FileHeader
-	JobDesc      string
-	ResponseChan chan NLPResponse
+	File       multipart.File
+	FileHeader *multipart.FileHeader
+	JobDesc    string
 }
 
-// NLPResponse carries the similarity result or error.
-type NLPResponse struct {
-	Similarity string
-	Err        error
-}
-
-// NLPService manages a queue for NLP analysis requests.
+// NLPService provides NLP analysis through Flask with concurrency limiting.
 type NLPService struct {
-	requestQueue  chan NLPRequest
-	rateLimitTime time.Duration
-	stopChannel   chan bool
+	MaxConcurrent int
+	semaphore     chan struct{}
 }
 
-// NewNLPService creates and starts the NLPService.
-func NewNLPService() *NLPService {
-	service := &NLPService{
-		requestQueue:  make(chan NLPRequest, 100),
-		rateLimitTime: time.Second, // 1 request/sec
-		stopChannel:   make(chan bool),
+// NewNLPService initializes the service with concurrency limit.
+func NewNLPService(maxConcurrent int) *NLPService {
+	return &NLPService{
+		MaxConcurrent: maxConcurrent,
+		semaphore:     make(chan struct{}, maxConcurrent),
 	}
-	go service.processQueue()
-	return service
 }
 
-// Analyze queues a request and returns a channel for the response.
+// Analyze sends the file and job description to Flask (with concurrency limit).
 func (s *NLPService) Analyze(file multipart.File, header *multipart.FileHeader, jobDesc string) (string, error) {
-	respChan := make(chan NLPResponse, 1)
-	req := NLPRequest{
-		File:         file,
-		FileHeader:   header,
-		JobDesc:      jobDesc,
-		ResponseChan: respChan,
-	}
-
 	select {
-	case s.requestQueue <- req:
-		resp := <-respChan
-		return resp.Similarity, resp.Err
+	case s.semaphore <- struct{}{}:
+		defer func() { <-s.semaphore }()
 	case <-time.After(2 * time.Second):
-		return "", fmt.Errorf("NLP request queue timeout")
+		return "", fmt.Errorf("Too many concurrent resume requests. Please try again shortly.")
 	}
-}
 
-// processQueue handles queued requests one-by-one with rate limiting.
-func (s *NLPService) processQueue() {
-	ticker := time.NewTicker(s.rateLimitTime)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case req := <-s.requestQueue:
-			result, err := sendToFlask(req)
-			req.ResponseChan <- NLPResponse{Similarity: result, Err: err}
-		case <-s.stopChannel:
-			return
-		}
-	}
-}
-
-// Stop signals the service to stop processing.
-func (s *NLPService) Stop() {
-	close(s.stopChannel)
-}
-
-// sendToFlask does the actual HTTP POST to the Flask endpoint.
-func sendToFlask(req NLPRequest) (string, error) {
-	defer req.File.Close()
+	defer file.Close()
 
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
 	// Attach file
-	formFile, err := writer.CreateFormFile("file", req.FileHeader.Filename)
+	formFile, err := writer.CreateFormFile("file", header.Filename)
 	if err != nil {
 		return "", err
 	}
-	if _, err := io.Copy(formFile, req.File); err != nil {
+	if _, err := io.Copy(formFile, file); err != nil {
 		return "", err
 	}
 
 	// Attach job description
-	if err := writer.WriteField("job_description", req.JobDesc); err != nil {
+	if err := writer.WriteField("job_description", jobDesc); err != nil {
 		return "", err
 	}
-
 	writer.Close()
 
+	// Send POST request to Flask
 	resp, err := http.Post("http://localhost:5000/rank-resumes", writer.FormDataContentType(), &buf)
 	if err != nil {
 		return "", err
@@ -113,6 +69,10 @@ func sendToFlask(req NLPRequest) (string, error) {
 	respData, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Flask error: %s", string(respData))
 	}
 
 	return string(respData), nil

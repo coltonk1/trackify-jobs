@@ -11,7 +11,7 @@ var app *firebase.App
 
 func InitFirebase() {
 	ctx := context.Background()
-	opt := option.WithCredentialsFile("path/to/serviceAccountKey.json")
+	opt := option.WithCredentialsFile("C:/Users/Colton/Desktop/GitHub/trackify-jobs/backend/go/secrets/trackifyjobs-firebase-adminsdk-fbsvc-973468c2a2.json")
 	var err error
 	app, err = firebase.NewApp(ctx, nil, opt)
 	if err != nil {

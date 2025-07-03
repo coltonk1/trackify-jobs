@@ -1,6 +1,6 @@
 CREATE TABLE reminders (
     id SERIAL PRIMARY KEY,
-    user_id VARCHAR(255) NOT NULL,
+    user_id TEXT NOT NULL REFERENCES user_stripe(user_id) ON DELETE CASCADE,
     email TEXT NOT NULL,
     reminder_time TIMESTAMPTZ NOT NULL,
     content TEXT NOT NULL,

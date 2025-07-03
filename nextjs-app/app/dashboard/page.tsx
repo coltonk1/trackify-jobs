@@ -7,6 +7,10 @@ import 'react-pdf/dist/esm/Page/TextLayer.css';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import { parseResumeData, readFile } from '@/lib/parsing/main';
 import { getAuth } from 'firebase/auth';
+import {
+  compressToEncodedURIComponent,
+  decompressFromEncodedURIComponent,
+} from 'lz-string';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.mjs',
@@ -42,6 +46,7 @@ const tabs = [
   { id: 'keyword', label: 'Keyword Parser' },
   { id: 'score', label: 'Resume Score' },
   { id: 'suggestions', label: 'Suggestions' },
+  { id: 'rewrite', label: 'Rewrite' },
 ];
 
 const Main = () => {
@@ -127,6 +132,7 @@ const Main = () => {
 };
 
 function KeywordAnalysis({ resumeData }) {
+  console.log(resumeData);
   return (
     <>
       <h1>Work Experience</h1>
@@ -152,31 +158,50 @@ function KeywordAnalysis({ resumeData }) {
     </>
   );
 }
-
+type ScoreData = {
+  ai_score: number;
+  similarity: number;
+  average_similarity: number;
+  average_skill_similarity: number;
+  max_similarity: number;
+  max_skill_similarity: number;
+  job_chunks_evaluated: number;
+  job_skills: string[];
+  job_soft_skills: {
+    primary: string[];
+    secondary: string[];
+  };
+  resume_skills: string[];
+  resume_soft_skills: {
+    primary: string[];
+    secondary: string[];
+  };
+  matched_skills: any[]; // Replace with exact type if needed
+};
 function ResumeScoring({ file }: { file: File }) {
   const [jobDesc, setJobDesc] = useState('');
-  const [score, setScore] = useState<string | null>(null);
+  const [scoreData, setScoreData] = useState<ScoreData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     setLoading(true);
     setError(null);
-    const formData = new FormData();
 
     const auth = getAuth();
     const user = auth.currentUser;
-
     if (!user) {
-      throw new Error('User not authenticated');
+      setError('User not authenticated');
+      setLoading(false);
+      return;
     }
 
+    const formData = new FormData();
     formData.append('file', file);
     formData.append('job_description', jobDesc);
 
     try {
       const idToken = await user.getIdToken();
-
       const res = await fetch('/api/analyze', {
         method: 'POST',
         body: formData,
@@ -191,17 +216,16 @@ function ResumeScoring({ file }: { file: File }) {
       }
 
       const data = await res.json();
-      console.log(data);
-      setScore(data.similarity ?? 'No score returned');
+      setScoreData(data);
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Something went wrong');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div>
+    <div className="max-w-2xl mx-auto">
       <label className="block mb-2 font-medium">Job Description</label>
       <textarea
         value={jobDesc}
@@ -219,8 +243,97 @@ function ResumeScoring({ file }: { file: File }) {
         {loading ? 'Analyzing...' : 'Submit'}
       </button>
 
-      {score && <p className="mt-4 font-semibold">Score: {score}</p>}
       {error && <p className="mt-4 text-red-500">Error: {error}</p>}
+
+      {scoreData && (
+        <div className="mt-6 space-y-2 text-sm">
+          {(() => {
+            const values = [
+              { label: 'AI Score', value: scoreData.ai_score },
+              { label: 'Similarity', value: scoreData.similarity },
+              {
+                label: 'Average Skill Match',
+                value: scoreData.average_skill_similarity,
+              },
+            ].sort((a, b) => a.value - b.value);
+
+            const min = values[0];
+            const mid = values[1];
+            const max = values[2];
+
+            return (
+              <div className="mt-6 text-sm">
+                <h2 className="font-semibold text-lg mb-2">Score Breakdown</h2>
+                <div className="relative h-4 bg-purple-100 rounded w-full">
+                  {/* shaded range */}
+                  <div
+                    className="absolute h-full bg-purple-300"
+                    style={{
+                      left: `${min.value}%`,
+                      width: `${max.value - min.value}%`,
+                    }}
+                  />
+                  {/* markers */}
+                  {[min, mid, max].map((point, idx) => {
+                    const colors = [
+                      'bg-[#0000]',
+                      'bg-purple-800',
+                      'bg-[#0000]',
+                    ];
+                    return (
+                      <div
+                        key={point.label}
+                        className={`absolute top-0 h-4 w-0.5 ${colors[idx]}`}
+                        style={{ left: `${point.value}%` }}
+                        title={`${point.label}: ${point.value.toFixed(2)}%`}
+                      />
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-center text-gray-700">
+                  <strong>Resume Score:</strong> {mid.value.toFixed(2)}%
+                </p>
+              </div>
+            );
+          })()}
+          <p>
+            <strong>Matched Skills:</strong> {scoreData.matched_skills.length}
+          </p>
+
+          <div>
+            <strong>Resume Skills:</strong>
+            <p className="text-gray-700">
+              {scoreData.resume_skills.join(', ')}
+            </p>
+          </div>
+
+          <div>
+            <strong>Job Skills:</strong>
+            <p className="text-gray-700">{scoreData.job_skills.join(', ')}</p>
+          </div>
+
+          <div>
+            <strong>Resume Soft Skills:</strong>
+            <p className="text-gray-700">
+              Primary: {scoreData.resume_soft_skills.primary.join(', ') || '—'}
+            </p>
+            <p className="text-gray-700">
+              Secondary:{' '}
+              {scoreData.resume_soft_skills.secondary.join(', ') || '—'}
+            </p>
+          </div>
+
+          <div>
+            <strong>Job Soft Skills:</strong>
+            <p className="text-gray-700">
+              Primary: {scoreData.job_soft_skills.primary.join(', ') || '—'}
+            </p>
+            <p className="text-gray-700">
+              Secondary: {scoreData.job_soft_skills.secondary.join(', ') || '—'}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -256,7 +369,7 @@ function ResumeSuggestions({ file }) {
       if (!user) throw new Error('User not authenticated');
 
       const idToken = await user.getIdToken();
-      const res = await fetch('/api/suggestions', {
+      const res = await fetch('/api/llm/recommendations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -271,18 +384,10 @@ function ResumeSuggestions({ file }) {
       if (!res.ok) throw new Error(await res.text());
 
       const data = await res.json();
-      let raw = data.suggestions;
-      if (typeof raw === 'string') {
-        // Remove ```json or ``` and surrounding backticks
-        raw = raw
-          .trim()
-          .replace(/^```(?:json)?/, '') // remove starting ``` or ```json
-          .replace(/```$/, '') // remove ending ```
-          .trim();
-      }
+
+      let recommendations = data.recommendations;
       try {
-        const parsed = JSON.parse(raw);
-        setSuggestions(parsed as StructuredSuggestions);
+        setSuggestions(recommendations as StructuredSuggestions);
       } catch {
         setSuggestions(null);
       }
@@ -376,6 +481,171 @@ function ResumeSuggestions({ file }) {
   );
 }
 
+type RewrittenResume = {
+  name: string;
+  email: string;
+  phone: string;
+  linkedin: string;
+  github: string;
+  summary: string;
+  education: string;
+  skills: string;
+  experience: {
+    title: string;
+    company: string;
+    date: string;
+    bullets: string[];
+  }[];
+  projects: { name: string; date: string; bullets: string[] }[];
+  customSections?: { name: string; bullets: string[] }[];
+};
+
+function ResumeRewriter({ file }: { file: File }) {
+  const [jobDescription, setJobDescription] = useState('');
+  const [resume, setResume] = useState<RewrittenResume | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchRewritten = async () => {
+    if (!jobDescription.trim()) {
+      setError('Job description is required');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const resumeText = await readFile(arrayBuffer); // your PDF-to-text extractor
+
+      const auth = getAuth();
+      const user = auth.currentUser;
+      if (!user) throw new Error('User not authenticated');
+      const token = await user.getIdToken();
+
+      const res = await fetch('/api/llm/rewrite', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          resume_text: resumeText,
+          job_description: jobDescription,
+        }),
+      });
+
+      if (!res.ok) throw new Error(await res.text());
+
+      const data = await res.json();
+      const resumeData = data.rewrites;
+      const query = compressToEncodedURIComponent(JSON.stringify(resumeData));
+      window.open(`/create-resume?custom_resume=${query}`, '_blank');
+    } catch (err: any) {
+      setError(err.message || 'Failed to rewrite resume');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateBullet = (
+    section: 'experience' | 'projects' | 'customSections',
+    index: number,
+    bulletIndex: number,
+    value: string
+  ) => {
+    if (!resume) return;
+    const updated = { ...resume };
+    (updated[section] as any)[index].bullets[bulletIndex] = value;
+    setResume(updated);
+  };
+
+  return (
+    <div className="p-4 border rounded shadow bg-white mt-4">
+      <label className="block font-medium mb-1">Paste Job Description:</label>
+      <textarea
+        className="w-full h-32 p-2 border border-gray-300 rounded resize-none mb-3"
+        value={jobDescription}
+        onChange={(e) => setJobDescription(e.target.value)}
+        placeholder="Paste job description here..."
+      />
+
+      <button
+        onClick={fetchRewritten}
+        disabled={loading}
+        className="mb-4 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+      >
+        {loading ? 'Rewriting...' : 'Rewrite Resume'}
+      </button>
+
+      {error && <p className="text-red-500 mb-3">{error}</p>}
+
+      {resume && (
+        <div>
+          <h2 className="text-lg font-semibold mb-4">Rewritten Resume</h2>
+
+          {['experience', 'projects', 'customSections'].map((section) => {
+            const entries = (resume as any)[section];
+            if (!entries?.length) return null;
+
+            return (
+              <div key={section} className="mb-6">
+                <h3 className="text-md font-bold capitalize mb-2">{section}</h3>
+                {entries.map((entry: any, idx: number) => (
+                  <div
+                    key={idx}
+                    className="mb-4 pl-4 border-l-2 border-gray-300"
+                  >
+                    <div className="text-sm text-gray-700 mb-1 font-medium">
+                      {entry.title || entry.name} @{' '}
+                      {entry.company || entry.date}
+                    </div>
+                    {entry.bullets.map((bullet: string, i: number) => (
+                      <textarea
+                        key={i}
+                        className="w-full border p-2 rounded text-sm mb-2"
+                        value={bullet}
+                        onChange={(e) =>
+                          updateBullet(section as any, idx, i, e.target.value)
+                        }
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+
+          <button
+            onClick={() => {
+              const blob = new Blob([JSON.stringify(resume, null, 2)], {
+                type: 'application/json',
+              });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = 'rewritten-resume.json';
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+            className="mt-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+          >
+            Download as JSON
+          </button>
+
+          <div className="mt-6">
+            <h3 className="text-md font-bold mb-2">Raw JSON Preview</h3>
+            <pre className="text-xs bg-gray-100 p-2 rounded max-h-96 overflow-auto">
+              {JSON.stringify(resume, null, 2)}
+            </pre>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ResumeTabs({ resumeData, rawFile }) {
   const [activeTab, setActiveTab] = useState('keyword');
 
@@ -401,6 +671,7 @@ function ResumeTabs({ resumeData, rawFile }) {
         {activeTab === 'keyword' && <KeywordAnalysis resumeData={resumeData} />}
         {activeTab === 'score' && rawFile && <ResumeScoring file={rawFile} />}
         {activeTab === 'suggestions' && <ResumeSuggestions file={rawFile} />}
+        {activeTab === 'rewrite' && <ResumeRewriter file={rawFile} />}
       </div>
     </div>
   );

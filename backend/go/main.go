@@ -68,14 +68,14 @@ func main() {
 	emailService := services.NewEmailService("")
 	defer emailService.Stop()
 
-	suggestionService := services.NewSuggestionsService()
+	llmService := services.NewLLMService()
 
-	resumeService := services.NewResumeService(db, cfg.ResumeFolder)
-	resumeHandler := handlers.NewResumeHandler(resumeService)
-	suggestionsHandler := handlers.NewSuggestionsHandler(suggestionService)
+	documentService := services.NewDocumentService(db, cfg.MainFolder)
+	documentHandler := handlers.NewDocumentHandler(documentService)
+	suggestionsHandler := handlers.NewLLMHandler(llmService)
 
 	stripeService := services.NewStripeService(db)
-	stripeHandler := handlers.NewStripeHandler(authClient, stripeService)
+	stripeHandler := handlers.NewStripeHandler(authClient, stripeService, db, firebaseApp)
 
 	// Setup router
 	router := mux.NewRouter()
@@ -83,29 +83,73 @@ func main() {
 	// 	http.HandlerFunc(handlers.ProtectedEndpoint),
 	// ))
 	webhookHandler := handlers.NewStripeWebhookHandler(db)
-	api := router.PathPrefix("/api").Subrouter()
-	// Public routes (no auth)
-	api.HandleFunc("/set-cookie", handlers.SetAuthCookie).Methods("POST")
-	api.HandleFunc("/logout", handlers.Logout).Methods("POST")
-	api.HandleFunc("/init-user", stripeHandler.CreateNewUserHandler).Methods("POST")
-	api.HandleFunc("/stripe/webhook", webhookHandler.Handle)
 
-	// Protected routes
+	api := router.PathPrefix("/api").Subrouter()
+
+	public := api.PathPrefix("").Subrouter()
+	// Public routes (no auth)
+	public.HandleFunc("/set-cookie", handlers.SetAuthCookie).Methods("POST")
+	public.HandleFunc("/logout", handlers.Logout).Methods("POST")
+	public.HandleFunc("/init-user", stripeHandler.CreateNewUserHandler).Methods("POST")
+	public.HandleFunc("/stripe/webhook", webhookHandler.Handle)
+
 	protected := api.PathPrefix("").Subrouter()
 	protected.Use(middleware.FirebaseMiddleware)
-	protected.HandleFunc("/resumes", resumeHandler.CreateResume).Methods("POST")
-	protected.HandleFunc("/resumes", resumeHandler.GetUserResumes).Methods("GET")
-	protected.HandleFunc("/resumes/{id}", resumeHandler.GetResumeByID).Methods("GET")
+
+	// Resume management
+	protected.HandleFunc("/resumes", documentHandler.CreateResume).Methods("POST")
+	protected.HandleFunc("/resumes", documentHandler.GetUserResumes).Methods("GET")
+	protected.HandleFunc("/resumes/{id}", documentHandler.GetResumeByID).Methods("GET")
+	protected.HandleFunc("/resumes/{id}", documentHandler.DeleteResume).Methods("DELETE")
+
+	// NLP usage
 	protected.HandleFunc("/analyze", handlers.UploadHandler).Methods("POST")
-	protected.HandleFunc("/suggestions", suggestionsHandler.ResumeSuggestionsHandler).Methods("POST")
+
+	// Stripe billing routes
+	protected.HandleFunc("/stripe/current-user", stripeHandler.EnsureCustomer).Methods("POST")
+	protected.HandleFunc("/stripe/create-checkout-session", stripeHandler.CreateCheckoutSession).Methods("POST")
+	protected.HandleFunc("/stripe/create-customer-portal-session", stripeHandler.CreateCustomerPortalSession).Methods("POST")
+
+	// Feedback + account
+	protected.HandleFunc("/feedback", NotImplemented).Methods("POST")
+	protected.HandleFunc("/delete-account", NotImplemented).Methods("POST")
+
+	// Tracked job routes
+	protected.HandleFunc("/jobs", NotImplemented).Methods("POST")        // create job
+	protected.HandleFunc("/jobs", NotImplemented).Methods("GET")         // get jobs
+	protected.HandleFunc("/jobs/{id}", NotImplemented).Methods("PATCH")  // update job
+	protected.HandleFunc("/jobs/{id}", NotImplemented).Methods("DELETE") // delete job
+
+	// Cover letter storage routes
+	protected.HandleFunc("/cover-letters", documentHandler.CreateCoverLetter).Methods("POST")
+	protected.HandleFunc("/cover-letters", documentHandler.GetUserCoverLetters).Methods("GET")
+	protected.HandleFunc("/cover-letters/{id}", documentHandler.GetCoverLetterByID).Methods("GET")
+	protected.HandleFunc("/cover-letters/{id}", documentHandler.DeleteCoverLetter).Methods("DELETE")
+
+	// Pro-only LLM routes
+	subMiddleware := &middleware.Handler{DB: db}
+	pro := api.PathPrefix("").Subrouter()
+	pro.Use(middleware.FirebaseMiddleware)
+	pro.Use(subMiddleware.RequireProSubscription)
+
+	pro.HandleFunc("/llm/recommendations", suggestionsHandler.RecommendationsHandler).Methods("POST")
+	pro.HandleFunc("/llm/rewrite", suggestionsHandler.ResumeRewriteHandler).Methods("POST")
+	pro.HandleFunc("/llm/cover-letter", suggestionsHandler.CoverLetterHandler).Methods("POST")
+
 	// Apply CORS middleware
 	http.Handle("/", middleware.CORSMiddleware(router))
 
-	PrintRoutes(api, "All")
+	PrintRoutes(public, "Public")
 	log.Println(" ")
-	PrintRoutes(protected, "Protected")
+	PrintRoutes(protected, "Authentication")
+	log.Println(" ")
+	PrintRoutes(pro, "Pro Subscription")
 
 	// Start server
 	log.Printf("Server listening on port %s", cfg.Port)
 	log.Fatal(http.ListenAndServe(":"+cfg.Port, middleware.LoggingMiddleware(router)))
+}
+
+func NotImplemented(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "Not implemented", http.StatusNotImplemented)
 }

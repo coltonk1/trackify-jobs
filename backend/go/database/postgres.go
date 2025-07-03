@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"trackify-jobs/models"
@@ -287,5 +288,245 @@ func (db *PostgresDB) CreateNewStripeUser(userID, stripeCustomerID string) error
 func (db *PostgresDB) SetUserPlan(stripeCustomerID, plan string) error {
 	query := `UPDATE user_stripe SET plan = $1 WHERE stripe_customer_id = $2`
 	_, err := db.Exec(query, plan, stripeCustomerID)
+	return err
+}
+
+func (db *PostgresDB) SetUserPlanByCustomerID(customerID, plan string) error {
+	query := `
+		UPDATE user_stripe
+		SET plan = $1
+		WHERE stripe_customer_id = $2
+	`
+	_, err := db.Exec(query, plan, customerID)
+	if err != nil {
+		return fmt.Errorf("failed to set user plan for customer %s: %w", customerID, err)
+	}
+	return nil
+}
+
+func (db *PostgresDB) FlagUserAsDelinquent(customerID string) error {
+	query := `
+		UPDATE user_stripe
+		SET is_delinquent = TRUE
+		WHERE stripe_customer_id = $1
+	`
+	_, err := db.Exec(query, customerID)
+	if err != nil {
+		return fmt.Errorf("failed to flag delinquent user for customer %s: %w", customerID, err)
+	}
+	return nil
+}
+
+func (db *PostgresDB) GetStripeCustomerID(userID string) (string, error) {
+	var stripeID string
+
+	query := `
+		SELECT stripe_customer_id
+		FROM user_stripe
+		WHERE user_id = $1
+	`
+
+	err := db.DB.QueryRowContext(context.Background(), query, userID).Scan(&stripeID)
+	if err != nil {
+		return "", err // could be sql.ErrNoRows
+	}
+
+	return stripeID, nil
+}
+
+type StripeUser struct {
+	UserID             string
+	StripeCustomerID   string
+	SubscriptionID     sql.NullString
+	SubscriptionStatus sql.NullString
+	Plan               string
+	IsDelinquent       bool
+}
+
+func (db *PostgresDB) GetStripeUserByUID(uid string) (*StripeUser, error) {
+	row := db.QueryRow(`
+		SELECT user_id, stripe_customer_id, subscription_id, subscription_status, plan, is_delinquent
+		FROM user_stripe
+		WHERE user_id = $1
+	`, uid)
+
+	var su StripeUser
+	err := row.Scan(
+		&su.UserID,
+		&su.StripeCustomerID,
+		&su.SubscriptionID,
+		&su.SubscriptionStatus,
+		&su.Plan,
+		&su.IsDelinquent,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &su, nil
+}
+
+func (db *PostgresDB) GetUserPlan(userID string) (string, error) {
+	var plan string
+	err := db.QueryRow(`SELECT plan FROM user_stripe WHERE user_id = $1`, userID).Scan(&plan)
+	if err != nil {
+		return "", err
+	}
+	return plan, nil
+}
+
+func (db *PostgresDB) CanUserPerformEvent(userID, eventType string, maxCount int, interval string) (bool, error) {
+	var count int
+	query := `
+		SELECT COUNT(*) FROM analytics
+		WHERE user_id = $1
+		  AND event_type = $2
+		  AND timestamp >= NOW() - $3::interval;
+	`
+	err := db.QueryRow(query, userID, eventType, interval).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count < maxCount, nil
+}
+
+func (db *PostgresDB) DeleteResumeByID(id int, userID string) error {
+	_, err := db.Exec(`
+		DELETE FROM resumes
+		WHERE id = $1 AND user_id = $2
+	`, id, userID)
+	return err
+}
+
+func (db *PostgresDB) CreateCoverLetter(cl *models.CoverLetter) (*models.CoverLetter, error) {
+	err := db.QueryRow(`
+		INSERT INTO cover_letters (user_id, content)
+		VALUES ($1, $2)
+		RETURNING id, user_id, content, created_at
+	`, cl.UserID, cl.Content).Scan(&cl.ID, &cl.UserID, &cl.Content, &cl.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return cl, nil
+}
+
+func (db *PostgresDB) GetCoverLettersByUserID(userID string) ([]models.CoverLetter, error) {
+	rows, err := db.Query(`
+		SELECT id, user_id, content, created_at
+		FROM cover_letters
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var letters []models.CoverLetter
+	for rows.Next() {
+		var cl models.CoverLetter
+		if err := rows.Scan(&cl.ID, &cl.UserID, &cl.Content, &cl.CreatedAt); err != nil {
+			return nil, err
+		}
+		letters = append(letters, cl)
+	}
+	return letters, nil
+}
+
+func (db *PostgresDB) GetCoverLetterByIDAndUser(id int, userID string) (*models.CoverLetter, error) {
+	var cl models.CoverLetter
+	err := db.QueryRow(`
+		SELECT id, user_id, content, created_at
+		FROM cover_letters
+		WHERE id = $1 AND user_id = $2
+	`, id, userID).Scan(&cl.ID, &cl.UserID, &cl.Content, &cl.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &cl, nil
+}
+
+func (db *PostgresDB) DeleteCoverLetterByID(id int, userID string) error {
+	_, err := db.Exec(`
+		DELETE FROM cover_letters
+		WHERE id = $1 AND user_id = $2
+	`, id, userID)
+	return err
+}
+
+func (db *PostgresDB) CreateJob(job *models.Job) (*models.Job, error) {
+	query := `
+		INSERT INTO jobs (user_id, title, company, location, status, notes, url)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, created_at, updated_at;
+	`
+	err := db.QueryRow(
+		query,
+		job.UserID, job.Title, job.Company, job.Location, job.Status, job.Notes, job.URL,
+	).Scan(&job.ID, &job.CreatedAt, &job.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return job, nil
+}
+
+func (db *PostgresDB) GetJobsByUserID(userID string) ([]models.Job, error) {
+	rows, err := db.Query(`
+		SELECT id, user_id, title, company, location, status, notes, url, created_at, updated_at
+		FROM jobs
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []models.Job
+	for rows.Next() {
+		var j models.Job
+		if err := rows.Scan(
+			&j.ID, &j.UserID, &j.Title, &j.Company, &j.Location,
+			&j.Status, &j.Notes, &j.URL, &j.CreatedAt, &j.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, j)
+	}
+	return jobs, nil
+}
+
+func (db *PostgresDB) UpdateJob(id int, userID string, job *models.Job) (*models.Job, error) {
+	query := `
+		UPDATE jobs
+		SET title = $1,
+			company = $2,
+			location = $3,
+			status = $4,
+			notes = $5,
+			url = $6,
+			updated_at = NOW()
+		WHERE id = $7 AND user_id = $8
+		RETURNING created_at, updated_at;
+	`
+
+	err := db.QueryRow(
+		query,
+		job.Title, job.Company, job.Location, job.Status, job.Notes, job.URL,
+		id, userID,
+	).Scan(&job.CreatedAt, &job.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	job.ID = id
+	job.UserID = userID
+	return job, nil
+}
+
+func (db *PostgresDB) DeleteJob(id int, userID string) error {
+	_, err := db.Exec(`
+		DELETE FROM jobs
+		WHERE id = $1 AND user_id = $2
+	`, id, userID)
 	return err
 }
