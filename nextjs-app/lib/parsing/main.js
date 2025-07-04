@@ -142,7 +142,28 @@ async function getWorkExperience(SECTIONS, page) {
   // prettier-ignore
   const WORK_EXPERIENCE_KEYWORDS_LOWERCASE = ['work', 'experience', 'employment', 'history', 'job'];
   // prettier-ignore
-  const JOB_KEYWORDS = ['Accountant', 'Administrator', 'Advisor', 'Agent', 'Analyst', 'Apprentice', 'Architect', 'Assistant', 'Associate', 'Auditor', 'Bartender', 'Biologist', 'Bookkeeper', 'Buyer', 'Carpenter', 'Cashier', 'CEO', 'Clerk', 'Co-op', 'Co-Founder', 'Consultant', 'Coordinator', 'CTO', 'Developer', 'Designer', 'Director', 'Driver', 'Editor', 'Electrician', 'Engineer', 'Extern', 'Founder', 'Freelancer', 'Head', 'Intern', 'Janitor', 'Journalist', 'Laborer', 'Lawyer', 'Lead', 'Manager', 'Mechanic', 'Member', 'Nurse', 'Officer', 'Operator', 'Operation', 'Photographer', 'President', 'Producer', 'Recruiter', 'Representative', 'Researcher', 'Sales', 'Server', 'Scientist', 'Specialist', 'Supervisor', 'Teacher', 'Technician', 'Trader', 'Trainee', 'Treasurer', 'Tutor', 'Vice', 'VP', 'Volunteer', 'Webmaster', 'Worker', 'Volunteer'];
+  const JOB_KEYWORDS = [
+  'accountant', 'administrator', 'advisor', 'agent', 'analyst', 'apprentice',
+  'architect', 'assistant', 'associate', 'auditor', 'bartender', 'biologist',
+  'bookkeeper', 'buyer', 'carpenter', 'cashier', 'ceo', 'clerk', 'coop',
+  'cofounder', 'consultant', 'coordinator', 'cto', 'developer', 'designer',
+  'director', 'driver', 'editor', 'electrician', 'engineer', 'extern', 'founder',
+  'freelancer', 'head', 'intern', 'janitor', 'journalist', 'laborer', 'lawyer',
+  'lead', 'manager', 'mechanic', 'member', 'nurse', 'officer', 'operator',
+  'operations', 'photographer', 'president', 'producer', 'recruiter',
+  'representative', 'researcher', 'sales', 'server', 'scientist', 'specialist',
+  'supervisor', 'teacher', 'technician', 'trader', 'trainee', 'treasurer',
+  'tutor', 'vice', 'vp', 'volunteer', 'webmaster', 'worker',
+  'developer', 'engineer', 'scientist', 'analyst', 'architect', 'designer',
+  'marketer', 'strategist', 'writer', 'editor', 'researcher', 'technician',
+  'recruiter', 'trainer', 'tester', 'manager', 'consultant', 'coordinator',
+  'planner', 'supervisor', 'instructor', 'auditor', 'inspector', 'operator',
+  'administrator', 'installer', 'assembler', 'dispatcher', 'economist',
+  'statistician', 'psychologist', 'therapist', 'pharmacist', 'physician',
+  'dentist', 'veterinarian', 'librarian', 'translator', 'interpreter',
+  'coach', 'advisor', 'cleaner', 'caretaker', 'plumber', 'welder',
+  'painter', 'roofer', 'mover', 'developer', 'designer', 'co-director'
+];
 
   let work_section;
   for (let keyword of WORK_EXPERIENCE_KEYWORDS_LOWERCASE) {
@@ -160,7 +181,10 @@ async function getWorkExperience(SECTIONS, page) {
 
   const hasJobTitle = (item) =>
     JOB_KEYWORDS.some((jobTitle) =>
-      item.str.split(/\s/).some((word) => word === jobTitle)
+      item.str
+        .toLowerCase()
+        .split(/\s/)
+        .some((word) => word === jobTitle)
     );
   const hasMoreThanFiveWords = (item) => item.str.split(' ').length > 5;
   const hasNumber = (item) => /\d/.test(item.str);
@@ -205,7 +229,6 @@ async function getWorkExperience(SECTIONS, page) {
     let company = getBestItem(subsection, [
       [hasMoreThanFiveWords, -10],
       [hasLettersOrSpace, 10],
-      [hasComma, -5],
       [hasText(date[0].str), -5],
       [hasText(job[0].str), -10],
       [hasMonth, -5],
@@ -216,7 +239,7 @@ async function getWorkExperience(SECTIONS, page) {
       job_title: job[0].str,
       date: date[0].str,
       company: company[0].str,
-      description: bullets.join('\n'),
+      description: bullets,
     });
   });
 

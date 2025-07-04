@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -35,6 +36,8 @@ func FirebaseMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "Unauthorized: Invalid Firebase token", http.StatusUnauthorized)
 			return
 		}
+
+		fmt.Println(token.UID)
 
 		// Optionally pass UID or whole token in context for later use
 		ctx := context.WithValue(r.Context(), "uid", token.UID)

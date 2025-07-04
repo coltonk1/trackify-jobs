@@ -1,6 +1,6 @@
 CREATE TABLE resumes (
     id SERIAL PRIMARY KEY,
-    user_id TEXT NOT NULL,
+    user_id TEXT NOT NULL REFERENCES user_stripe(user_id) ON DELETE CASCADE,
     filename TEXT NOT NULL,
     uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
