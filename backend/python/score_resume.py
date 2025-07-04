@@ -208,7 +208,7 @@ def embed_phrases(phrases):
 
 def nonlinear_boost(x):
     print(x)
-    raw = 1 / (1 + math.exp(-14 * (x - 0.6)))
+    raw = 1 / (1 + math.exp(-14 * (x - 0.65)))
     return 0.2 + 0.8 * raw
     # y = 1 / (1 + math.exp(-12 * (x - 0.6)))
     # return y
@@ -273,7 +273,7 @@ def score_resume_vs_job(resume_text, job_description):
     job_soft = extract_soft_skills(job_description, 0.35, 0.3)
     resume_soft = extract_soft_skills(resume_text, 0.45, 0.37)
 
-    weighted_score = max_score * .5 + (skill_avg_sim / 100) * .5
+    weighted_score = max_score * .55 + (skill_avg_sim / 100) * .45
 
     final_score = nonlinear_boost(weighted_score)
     if final_score < avg_score:

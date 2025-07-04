@@ -30,20 +30,20 @@ const styles = StyleSheet.create({
     lineHeight: 1.4,
   },
   section: {
-    marginBottom: 12,
+    marginBottom: 10,
   },
   header: {
-    fontSize: 20,
-    marginBottom: 12,
+    fontSize: 18,
+    marginBottom: 8,
     fontWeight: 'bold',
     textTransform: 'uppercase',
   },
   contactInfo: {
-    fontSize: 10,
+    fontSize: 11,
     marginBottom: 2,
   },
   subHeader: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 'bold',
     textTransform: 'uppercase',
     borderBottomWidth: 1,
@@ -113,6 +113,13 @@ function ResumeDocument({ data }) {
         <View style={styles.section}>
           <Text style={styles.subHeader}>Education</Text>
           <Text>{education}</Text>
+          {/* <View style={styles.jobHeader}>
+            <Text>{'University of Georgia'}</Text>
+            <Text>{'Dec 2025'}</Text>
+          </View>
+          <Text style={styles.jobCompany}>
+            {'Bachelor of Science in Computer Science'}
+          </Text> */}
         </View>
 
         <View style={styles.section}>

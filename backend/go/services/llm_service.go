@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
@@ -150,7 +151,7 @@ Only output a valid JSON object.`, resumeText, jobDescription)
 	return s.callGemini(prompt)
 }
 
-func (s *LLMService) RewriteResume(resumeText string, jobDescription string) (json.RawMessage, error) {
+func (s *LLMService) RewriteResume(resumeText string, jobDescription string, missingSkills []string) (json.RawMessage, error) {
 	client := openai.NewClient(os.Getenv("OPENAI_API_KEY"))
 
 	systemPrompt := `You are an expert resume optimizer. Your task is to transform the following resume into a highly effective, modern, and **job-specific** version that excels with both **human recruiters** and **Applicant Tracking Systems (ATS)**.
@@ -185,13 +186,28 @@ You must revise the following fields:
 - projects[].bullets
 - skills
 
+### Missing Skills Guidance:
+Below is a list of potentially missing or underemphasized job-relevant skills:
+
+{{missingSkills}}
+
+If these skills appear inferable from the resume (e.g., based on responsibilities described in projects, job titles, or general technical scope), **integrate them naturally** into relevant sections (e.g., summary, bullets, skills).
+
+You may also:
+- Use job description phrasing (verbs, tools, and duties) that reflect these skills
+- Expand or rephrase vague bullet points to more explicitly state a skill or tool the resume clearly implies
+- Surface skills that were buried in broad terms (e.g., rephrase "built web app" to mention "React," "REST API," or "authentication" if applicable)
+- Try to match as many job description skills as possible, if reasonably applicable.
+
+**Do not fabricate skills or achievements.** Only include skills if they are clearly supported or reasonably implied by the resume content.
+
 ### Bullet Guidelines:
 - Every bullet must follow the **X-Y-Z format**:
   - **X:** What was done (action)
   - **Y:** How it was done (tools, frameworks, methods)
   - **Z:** Why it mattered (impact, metric, or value)
 - Use concise, single-sentence bullets (no filler)
-- **Each bullet must be ≤ 25 words**
+- **Each bullet must be ≤ 20 words**
 - **Use 1–3 bullets per experience or project**, prioritizing relevance. Fewer is often better.
 - You may **omit entire roles or projects** if they are not relevant or add no clear value
 
@@ -248,6 +264,10 @@ Return only a valid JSON object in the following format:
 
 Return only the transformed JSON object. Do not include commentary, labels, or explanations.`
 
+	missingSkillsText := strings.Join(missingSkills, ", ")
+
+	injectedPrompt := strings.Replace(systemPrompt, "{{missingSkills}}", missingSkillsText, 1)
+
 	userPrompt := fmt.Sprintf("Resume:\n%s\n\nJob Description:\n%s", resumeText, jobDescription)
 
 	resp, err := client.CreateChatCompletion(
@@ -255,7 +275,7 @@ Return only the transformed JSON object. Do not include commentary, labels, or e
 		openai.ChatCompletionRequest{
 			Model: openai.GPT4Dot1Nano,
 			Messages: []openai.ChatCompletionMessage{
-				{Role: openai.ChatMessageRoleSystem, Content: systemPrompt},
+				{Role: openai.ChatMessageRoleSystem, Content: injectedPrompt},
 				{Role: openai.ChatMessageRoleUser, Content: userPrompt},
 			},
 			Temperature: 0.3,
@@ -269,28 +289,57 @@ Return only the transformed JSON object. Do not include commentary, labels, or e
 }
 
 func (s *LLMService) GenerateCoverLetter(resumeText, jobDescription string) (json.RawMessage, error) {
-	prompt := fmt.Sprintf(`
-You are a career coach writing a professional and personalized cover letter based on the applicant's resume and the job description.
+	client := openai.NewClient(os.Getenv("OPENAI_API_KEY"))
 
-Avoid buzzwords and focus on relevant skills and experience. Keep the tone professional, confident, and thankful — not robotic or generic.
+	systemPrompt := `You are a career coach writing professional, personalized cover letters tailored to the applicant’s resume and the job description.
 
-Output a valid JSON object with the following fields:
+Your task is to create a cover letter that clearly demonstrates why the applicant is a strong fit for the role, using relevant experience, skills, and motivations drawn from the resume and **clearly aligned with the job description**.
+
+### Writing Guidelines:
+- Do **not** fabricate experience, qualifications, or skills that are not clearly supported by the resume.
+- The tone must be professional, confident, and **human**—not inflated, robotic, or overly formal.
+- Write in a way that sounds like a real person: natural, direct, and thoughtfully worded.
+- The letter must reflect genuine interest in the specific job, not read like a generic template.
+- Rephrase and contextualize resume content rather than copying it verbatim.
+- **Incorporate specific language, responsibilities, tools, or qualifications from the job description** to show the applicant read and understood the role.
+- Mention aspects of the job or company that align with the applicant’s background or interests when possible.
+- Avoid vague platitudes or empty enthusiasm. Focus on substance: what the candidate offers, and why they are well-matched to this job.
+
+### Output Format:
+Return only a valid JSON object with a single field:
 {
-  "greeting": "string",
-  "opening_paragraph": "string",
-  "body_paragraph": "string",
-  "closing_paragraph": "string",
-  "signoff": "string"
+  "cover_letter": "string"
 }
 
-Resume:
-%s
+The cover letter should include:
+- A greeting
+- A brief, specific opening paragraph (1–2 sentences)
+- A body section (1–2 concise paragraphs) that connects the applicant’s background to the job requirements
+- A short closing paragraph and signoff
 
-Job Description:
-%s
+Use newline characters (\n) between logical sections.
 
-Only output a valid JSON object.`, resumeText, jobDescription)
+Never use this character: —.
+Never use an em dash to break up a sentence or punctuation separator. Use regular punctuation.
 
-	text, err := s.callGemini(prompt)
-	return json.RawMessage(text), err
+Do **not** include explanations, markdown, labels, or anything outside the JSON object. Output only the JSON.`
+
+	userPrompt := fmt.Sprintf("Resume:\n%s\n\nJob Description:\n%s", resumeText, jobDescription)
+
+	resp, err := client.CreateChatCompletion(
+		context.Background(),
+		openai.ChatCompletionRequest{
+			Model: openai.GPT4Dot1Nano,
+			Messages: []openai.ChatCompletionMessage{
+				{Role: openai.ChatMessageRoleSystem, Content: systemPrompt},
+				{Role: openai.ChatMessageRoleUser, Content: userPrompt},
+			},
+			Temperature: 0.4,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("OpenAI call failed: %w", err)
+	}
+
+	return json.RawMessage(resp.Choices[0].Message.Content), nil
 }

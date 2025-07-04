@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"trackify-jobs/services"
 )
@@ -38,10 +39,11 @@ type RecommendationsResponse struct {
 
 type LLMHandler struct {
 	LLMService *services.LLMService
+	NLPService *services.NLPService
 }
 
-func NewLLMHandler(s *services.LLMService) *LLMHandler {
-	return &LLMHandler{LLMService: s}
+func NewLLMHandler(s *services.LLMService, n *services.NLPService) *LLMHandler {
+	return &LLMHandler{LLMService: s, NLPService: n}
 }
 
 func (h *LLMHandler) ResumeRewriteHandler(w http.ResponseWriter, r *http.Request) {
@@ -50,19 +52,77 @@ func (h *LLMHandler) ResumeRewriteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var req ResumeRewriteRequest
-	if err := parseJSON(r, &req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	// Parse multipart form data
+	err := r.ParseMultipartForm(10 << 20)
+	if err != nil {
+		log.Printf("Failed to parse multipart form: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to parse multipart form: %v", err), http.StatusBadRequest)
 		return
 	}
 
-	rewrites, err := h.LLMService.RewriteResume(req.ResumeText, req.JobDescription)
+	// Extract file from "resume_file"
+	file, header, err := r.FormFile("resume_file")
 	if err != nil {
+		http.Error(w, fmt.Sprintf("Missing resume_file: %v", err), http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Extract resume_text and job_description from form fields
+	resumeText := r.FormValue("resume_text")
+	jobDescription := r.FormValue("job_description")
+
+	if resumeText == "" || jobDescription == "" {
+		http.Error(w, "Missing resume_text or job_description", http.StatusBadRequest)
+		return
+	}
+
+	// Analyze the uploaded file (NLP metadata, matched skills, etc.)
+	analysis, err := h.NLPService.Analyze(file, header, jobDescription)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("NLP analysis failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	var parsedAnalysis map[string]interface{}
+	if err := json.Unmarshal([]byte(analysis), &parsedAnalysis); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to parse analysis JSON: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	var lowSimilaritySkills []string
+
+	// Get matched_skills from the parsed map
+	if matched, ok := parsedAnalysis["matched_skills"].([]interface{}); ok {
+		for _, item := range matched {
+			if skillMap, ok := item.(map[string]interface{}); ok {
+				sim, okSim := skillMap["similarity"].(float64)
+				skill, okSkill := skillMap["job_skill"].(string)
+
+				if okSim && okSkill && sim < 75 {
+					lowSimilaritySkills = append(lowSimilaritySkills, skill)
+				}
+			}
+		}
+	}
+
+	// Rewrite the provided resume text with job description
+	rewrites, err := h.LLMService.RewriteResume(resumeText, jobDescription, lowSimilaritySkills)
+	if err != nil {
+
 		http.Error(w, fmt.Sprintf("Resume rewrite failed: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	resp := ResumeRewriteResponse{Rewrites: rewrites}
+	// Return both rewrites and analysis (if you want both in one response)
+	resp := struct {
+		Rewrites interface{} `json:"rewrites"`
+		Analysis interface{} `json:"analysis"`
+	}{
+		Rewrites: rewrites,
+		Analysis: parsedAnalysis,
+	}
+
 	writeJSON(w, resp)
 }
 

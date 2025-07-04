@@ -72,7 +72,8 @@ func main() {
 
 	documentService := services.NewDocumentService(db, cfg.MainFolder)
 	documentHandler := handlers.NewDocumentHandler(documentService)
-	suggestionsHandler := handlers.NewLLMHandler(llmService)
+	nlpService := services.NewNLPService(20)
+	suggestionsHandler := handlers.NewLLMHandler(llmService, nlpService)
 
 	stripeService := services.NewStripeService(db)
 	stripeHandler := handlers.NewStripeHandler(authClient, stripeService, db, firebaseApp)
