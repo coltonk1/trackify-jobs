@@ -19,12 +19,21 @@ const extractBulletPoints = (section) => {
 
   section.forEach((item) => {
     const text = item.str.trim();
+    const isNewBullet = BULLET_POINTS.some((bullet) => text.startsWith(bullet));
+    if (isNewBullet) {
+      // If we were building a bullet, save it before starting a new one
+      if (currentItem) {
+        bulletPoints.push(currentItem);
+      }
 
-    if (BULLET_POINTS.some((bullet) => text.startsWith(bullet))) {
-      if (currentItem) bulletPoints.push(currentItem);
-      currentItem = text + ' ';
+      // Start new bullet item
+      currentItem = text;
     } else if (currentItem) {
-      currentItem += text;
+      const lastChar = currentItem.trim().slice(-1);
+      const needsSpace = lastChar !== '-';
+
+      // Append continuation line, conditionally adding a space
+      currentItem += (needsSpace ? ' ' : '') + text;
     }
   });
 
@@ -54,6 +63,8 @@ const extractBulletPoints = (section) => {
   if (current.length > 0) {
     result.push(current.join(''));
   }
+
+  console.log(result);
 
   return result;
 };
@@ -88,52 +99,73 @@ const getCleanedItems = async (page) => {
   return lines;
 };
 
+const SECTION_TITLE_MAP = {
+  experience: ['experience', 'work experience', 'professional experience'],
+  education: ['education', 'academic background'],
+  project: ['projects', 'personal projects', 'side projects'],
+  skills: ['skills', 'technical skills', 'tools'],
+  summary: ['summary', 'profile', 'professional summary'],
+};
+
+const getCanonicalSectionKey = (title) => {
+  const normalized = title.toLowerCase().trim();
+  for (const [canonicalKey, variants] of Object.entries(SECTION_TITLE_MAP)) {
+    if (variants.some((variant) => normalized.includes(variant))) {
+      return canonicalKey;
+    }
+  }
+  return null; // fallback if no match
+};
+
 async function getSectionsFromCleanedItems(CLEANED_ITEMS, page) {
-  const MAIN_SECTION_TITLES = ['experience', 'education', 'project', 'skill'];
-  const SECONDARY_SECTION_TITLES = [
-    'job',
-    'course',
-    'extracurricular',
-    'objective',
-    'summary',
-    'award',
-    'honor',
-  ];
-  const ALL_SECTIONS = [...MAIN_SECTION_TITLES, ...SECONDARY_SECTION_TITLES];
+  await page.getOperatorList(); // ensure fonts are loaded
 
-  let discovered_sections = {};
-  await page.getOperatorList();
+  const discovered_sections = {};
+  let current_section = 'profile';
+  let sectionDetected = false;
+  let headerCount = 0;
 
-  let current_section = 'PROFILE';
-  const isValidTitle = (str) => /^[A-Za-z\s&]+$/.test(str);
+  let firstHeaderInProfile = null;
 
-  CLEANED_ITEMS.forEach((line) => {
-    if (
-      line.length == 1 &&
-      page.commonObjs
-        .get(line[0].fontName)
-        .name.toLowerCase()
-        .includes('bold') &&
-      line[0].str.toUpperCase() === line[0].str
-    ) {
-      current_section = line[0].str;
-    } else if (
-      line.length == 1 &&
-      isValidTitle(line[0].str) &&
-      ALL_SECTIONS.some((title) => {
-        return line[0].str.toLowerCase().includes(title.toLowerCase());
-      }) &&
-      line[0].str.slice(0, 1).toUpperCase() === line[0].str.slice(0, 1)
-    ) {
-      current_section = line[0].str;
-    } else {
-      if (current_section in discovered_sections) {
-        discovered_sections[current_section].push(line);
+  for (const line of CLEANED_ITEMS) {
+    const isSingle = line.length === 1;
+    const text = isSingle ? line[0].str.trim() : '';
+    const fontName = isSingle
+      ? page.commonObjs.get(line[0].fontName).name.toLowerCase()
+      : '';
+
+    const isBoldUppercase =
+      isSingle && fontName.includes('bold') && text === text.toUpperCase();
+
+    const isValidHeading =
+      isSingle &&
+      /^[A-Za-z\s&]+$/.test(text) &&
+      text[0] === text[0].toUpperCase();
+
+    const matchedKey = getCanonicalSectionKey(text);
+    const isHeaderCandidate = isBoldUppercase || (isValidHeading && matchedKey);
+
+    if (isHeaderCandidate) {
+      headerCount++;
+
+      if (headerCount === 1) {
+        // treat first header as part of profile
+        firstHeaderInProfile = text;
+        // don't change current_section yet
       } else {
-        discovered_sections[current_section] = [line];
+        // switch to canonical key or raw text
+        current_section = matchedKey || text;
+        continue;
       }
     }
-  });
+
+    // Add to the current section
+    if (discovered_sections[current_section]) {
+      discovered_sections[current_section].push(line);
+    } else {
+      discovered_sections[current_section] = [line];
+    }
+  }
 
   return discovered_sections;
 }
@@ -313,7 +345,7 @@ async function getProjects(SECTIONS, page) {
     output.push({
       title: title[0].str,
       date: date[0].str,
-      description: bullets.join('\n'),
+      description: bullets,
     });
   });
 
@@ -479,6 +511,72 @@ function getSubSections(section, page) {
 
 // main();
 
+function extractProfileData(profileSection) {
+  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/i;
+  const phoneRegex =
+    /(\+?\d{1,2}[-.\s]?)?(\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}/;
+  const urlRegex =
+    /\b(https?:\/\/)?(www\.)?[\w\-]+\.[a-z]{2,}(\/[\w\-._~:/?#[\]@!$&'()*+,;=]*)?/gi;
+
+  const flattened = profileSection.flat(); // remove line grouping
+  const lines = flattened.map((item) => item.str.trim()).filter(Boolean);
+
+  const result = {
+    name: null,
+    email: null,
+    phone: null,
+    links: [],
+  };
+
+  for (const line of lines) {
+    // Try to get email
+    if (!result.email && emailRegex.test(line)) {
+      result.email = line.match(emailRegex)[0];
+    }
+    const domainFromEmail = result.email ? result.email.split('@')[1] : null;
+
+    // Try to get phone
+    if (!result.phone && phoneRegex.test(line)) {
+      result.phone = line.match(phoneRegex)[0];
+    }
+
+    // Get all links
+    const foundLinks = line.match(urlRegex);
+    if (foundLinks) {
+      result.links.push(
+        ...foundLinks
+          .map((l) => (l.startsWith('http') ? l : 'https://' + l))
+          .filter((link) => {
+            // Remove link if it's just the email domain (e.g., gmail.com)
+            if (domainFromEmail && link.includes(domainFromEmail)) {
+              return false;
+            }
+            // Remove exact match with email
+            if (result.email && link === result.email) {
+              return false;
+            }
+            return true;
+          })
+      );
+    }
+  }
+
+  // Heuristic for name: top-most line with alphabetic content, no digits or symbols
+  for (const line of lines) {
+    if (
+      /^[A-Za-z\s]+$/.test(line) &&
+      line.split(' ').length <= 4 &&
+      line.length >= 4 &&
+      line.length <= 40
+    ) {
+      result.name = line;
+      break;
+    }
+  }
+
+  return result;
+}
+
 export async function readFile(pdfArrayBuffer) {
   const loadingTask = pdfjsLib.getDocument({ data: pdfArrayBuffer });
   const pdfDocument = await loadingTask.promise;
@@ -497,9 +595,7 @@ export async function readFile(pdfArrayBuffer) {
   return allWords.join('\n');
 }
 
-export async function parseResumeData(pdfArrayBuffer) {
-  const loadingTask = pdfjsLib.getDocument({ data: pdfArrayBuffer });
-  const pdfDocument = await loadingTask.promise;
+export async function parseResumeData(pdfDocument) {
   const page = await pdfDocument.getPage(1);
 
   const CLEANED_ITEMS = await getCleanedItems(page).catch((err) => {
@@ -515,13 +611,26 @@ export async function parseResumeData(pdfArrayBuffer) {
     return {};
   });
 
-  console.log(FOUND_SECTIONS);
-
   const WORK_EXPERIENCE = await getWorkExperience(FOUND_SECTIONS, page);
   const PROJECTS = await getProjects(FOUND_SECTIONS, page);
+  const SUMMARY = (FOUND_SECTIONS.summary?.flat() || [])
+    .map((item) => item.str)
+    .join(' ');
+
+  const SKILLS = (FOUND_SECTIONS.skills?.flat() || [])
+    .map((item) => item.str)
+    .join(' ');
+  const PROFILE = extractProfileData(FOUND_SECTIONS['profile']);
+  const EDUCATION = (FOUND_SECTIONS.education?.flat() || [])
+    .map((item) => item.str)
+    .join(' ');
 
   return {
     workExperience: WORK_EXPERIENCE,
     projects: PROJECTS,
+    summary: SUMMARY,
+    skills: SKILLS,
+    profile: PROFILE,
+    education: EDUCATION,
   };
 }
