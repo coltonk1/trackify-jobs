@@ -3,12 +3,12 @@ import Link from 'next/link';
 // components/Footer.tsx
 const Footer = () => {
   return (
-    <footer className="mt-auto bg-[#6F42C1] p-8 text-white">
-      <div className="container mx-auto">
-        <div className="flex flex-col items-center justify-between md:flex-row">
+    <footer className="mt-auto bg-gray-50 border border-gray-200 p-6 px-12 text-zinc-800">
+      <div className="w-full">
+        <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
           <div className="mb-4 md:mb-0">
             <p>
-              &copy; {new Date().getFullYear()} ExampleSite. All rights
+              &copy; {new Date().getFullYear()} TrackifyJobs. All rights
               reserved.
             </p>
           </div>

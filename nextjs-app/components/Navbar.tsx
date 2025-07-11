@@ -17,8 +17,8 @@ const Navbar = () => {
   return (
     <nav
       id="navbar"
-      className="p-4 text-white sticky top-0 z-100 backdrop-blur-lg"
-      style={{ boxShadow: '0 0 15px #7583' }}
+      className="p-3 text-white sticky top-0 z-100 backdrop-blur-lg"
+      style={{ boxShadow: '0 0 10px #9242d77f' }}
     >
       <div className="container mx-auto flex items-center justify-between gap-8">
         <Link href="/" className="text-2xl font-bold">
@@ -39,7 +39,7 @@ const Navbar = () => {
           <UserSection />
         </ul>
       </div>
-      <div className="bg-gradient-to-r from-transparent via-[#fff3] to-transparent w-full h-[2px] absolute bottom-0"></div>
+      <div className="bg-gradient-to-r from-transparent via-[#fff5] to-transparent w-full h-0.5 absolute bottom-0"></div>
     </nav>
   );
 };

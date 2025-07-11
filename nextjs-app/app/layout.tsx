@@ -27,7 +27,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`antialiased min-h-screen flex flex-col`}>
+      <body
+        className={`antialiased min-h-screen flex flex-col overflow-x-hidden`}
+      >
         <AuthWrapper>
           <Navbar />
           {children}
