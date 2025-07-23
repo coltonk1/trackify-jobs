@@ -210,6 +210,8 @@ You may also:
 - **Each bullet must be ≤ 20 words**
 - **Use 1–3 bullets per experience or project**, prioritizing relevance. Fewer is often better.
 - You may **omit entire roles or projects** if they are not relevant or add no clear value
+- Use full sentences with proper punctuation and language.
+- Attempt to quantify where possible.
 
 ### Summary and Skills Constraints:
 To ensure the resume fits **on one page at 11 pt font with standard margins**:
@@ -221,7 +223,7 @@ To ensure the resume fits **on one page at 11 pt font with standard margins**:
 - You may remove or combine redundant content across roles or projects
 
 ### You MAY:
-- Adjust job titles for clarity if they were informal or vague
+- Adjust job titles for clarity if they were informal or vague, or to better fit the job description given that the modified version is the same thing.
 - Create new, plausible bullets based on reasonable inferences
 - Remove low-value or outdated experiences/projects
 - Improve clarity or conciseness in any field while preserving the original keys
@@ -304,6 +306,7 @@ Your task is to create a cover letter that clearly demonstrates why the applican
 - **Incorporate specific language, responsibilities, tools, or qualifications from the job description** to show the applicant read and understood the role.
 - Mention aspects of the job or company that align with the applicant’s background or interests when possible.
 - Avoid vague platitudes or empty enthusiasm. Focus on substance: what the candidate offers, and why they are well-matched to this job.
+- Never include an em dash or any form of dash to separate sentences. You must write using human language.
 
 ### Output Format:
 Return only a valid JSON object with a single field:
