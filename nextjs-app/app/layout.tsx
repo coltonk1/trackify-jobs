@@ -31,6 +31,18 @@ export default function RootLayout({
         className={`antialiased min-h-screen flex flex-col overflow-x-hidden`}
       >
         <AuthWrapper>
+          <div className="bg-yellow-100 text-yellow-800 text-center p-2 text-sm">
+            Currently in <strong>Early Access</strong>. For any issues, please{' '}
+            <a
+              href="/a"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline font-medium hover:text-yellow-900"
+            >
+              report them here
+            </a>
+            .
+          </div>
           <Navbar />
           {children}
           <Footer />

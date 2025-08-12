@@ -4,9 +4,9 @@ export default function PrivacyPolicyPage() {
       <h1 className="text-4xl font-bold mb-8">Privacy Policy</h1>
 
       <p className="mb-4">
-        TrackifyJobs is committed to protecting your privacy. This Privacy
-        Policy explains how we collect, use, and safeguard your information when
-        you use our service.
+        TrackifyJobs is committed to safeguarding your privacy. This Privacy
+        Policy outlines the types of information we collect, how we use it, and
+        the steps we take to protect it when you use our service.
       </p>
 
       <h2 className="text-2xl font-semibold mt-8 mb-2">
@@ -14,55 +14,69 @@ export default function PrivacyPolicyPage() {
       </h2>
       <p className="mb-4">
         We collect personal information you provide when creating an account,
-        uploading your resume, or interacting with features of the platform.
-        This may include your name, email, resume content, job application data,
-        and any feedback or messages you submit.
+        uploading your resume, generating rewritten resumes, or using platform
+        features. This may include:
       </p>
+      <ul className="list-disc pl-6 mb-4">
+        <li>Name and contact details (such as email address)</li>
+        <li>Original and rewritten resume content</li>
+        <li>Job application history and related data</li>
+        <li>Feedback, messages, or support requests</li>
+      </ul>
 
       <h2 className="text-2xl font-semibold mt-8 mb-2">
         2. How We Use Your Information
       </h2>
       <p className="mb-4">
-        Your data is used to provide core functionality, such as saving your
-        applications, generating resumes, or scoring your resume. We may use
-        anonymized usage patterns to improve features.
+        Your information is used to provide and improve core functionality,
+        including:
       </p>
+      <ul className="list-disc pl-6 mb-4">
+        <li>Saving and managing your job applications</li>
+        <li>Generating and securely storing rewritten resumes</li>
+        <li>Scoring and analyzing resumes</li>
+        <li>Improving platform features through anonymized usage data</li>
+      </ul>
 
       <h2 className="text-2xl font-semibold mt-8 mb-2">
         3. Data Storage and Security
       </h2>
       <p className="mb-4">
-        All application data is securely stored using Supabase, and user
-        authentication is handled via Firebase. Data is encrypted during
-        transit, and we take reasonable precautions to prevent data loss,
-        unauthorized access, or disclosure.
+        All application data, including original and rewritten resumes, is
+        securely stored using Supabase. Rewritten resumes are encrypted at rest
+        and in transit. User authentication is handled through Firebase, and we
+        implement industry-standard security measures to prevent unauthorized
+        access, loss, or disclosure of your data.
       </p>
 
       <h2 className="text-2xl font-semibold mt-8 mb-2">
         4. Sharing of Information
       </h2>
       <p className="mb-4">
-        We do not sell or share your personal data with third parties. Data may
-        be shared only with trusted service providers (e.g., Supabase, Firebase,
-        OpenAI) to enable platform functionality.
+        We do not sell or rent your personal data. We may share information only
+        with trusted service providers (e.g., Supabase, Firebase, OpenAI) when
+        necessary to operate the platform. These providers are contractually
+        obligated to protect your data.
       </p>
 
       <h2 className="text-2xl font-semibold mt-8 mb-2">5. Your Rights</h2>
       <p className="mb-4">
-        You can request deletion of your account and associated data at any
-        time. If you have questions about your data or privacy, contact us at
-        support@trackifyjobs.com.
+        You have the right to request deletion of your account and all
+        associated data at any time. To make a request or ask questions about
+        your data, contact us at support@trackifyjobs.com.
       </p>
 
       <h2 className="text-2xl font-semibold mt-8 mb-2">
         6. Changes to This Policy
       </h2>
       <p className="mb-4">
-        We may update this policy as needed. Material changes will be
-        communicated via the site or email.
+        We may update this policy from time to time. Any material changes will
+        be communicated via the site or email before taking effect.
       </p>
 
-      <p className="text-sm text-gray-500 mt-12">Last updated: July 23, 2025</p>
+      <p className="text-sm text-gray-500 mt-12">
+        Last updated: August 12, 2025
+      </p>
     </main>
   );
 }
