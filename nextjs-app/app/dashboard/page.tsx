@@ -1,203 +1,258 @@
 'use client';
-import { ChangeEvent, useRef, useState } from 'react';
+import { ChangeEvent, useCallback, useMemo, useRef, useState } from 'react';
 import { CircleArrowRight, Plus } from 'lucide-react';
-import { parseResumeData } from '@/lib/parsing/main';
+import clsx from 'clsx';
+import { pdfjs } from 'react-pdf';
 import PdfViewer from './PdfViewer';
 import SmartButton from './SmartButton';
-import clsx from 'clsx';
 import ResumeSummary from './ResumeSummary';
-import { pdfjs } from 'react-pdf';
 import ResumeSuggestions, {
   ResumeSuggestionsHandle,
 } from './ResumeSuggestions';
 import ResumeScoring, { ResumeScoringHandle } from './ResumeScoring';
 import ResumeRewriter from './ResumeRewriter';
 import CoverLetterWriter from './CoverLetterWriter';
+import { parseResumeData } from '@/lib/parsing/main';
+
+// Move this to a one-time module in real code, but leaving here for parity.
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.mjs',
   import.meta.url
 ).href;
 
-export default function Main() {
-  const [currentState, setCurrentState] = useState(0);
-  const [resumeRawFile, setResumeRawFile] = useState<null | File>(null);
-  const [resumeData, setResumeData] = useState<{
+type ResumeState = {
+  file: File | null;
+  name: string;
+  url: string; // object URL for PdfViewer
+  data?: {
     workExperience: any[];
     projects?: any[];
-  }>();
-  const [resumeName, setResumeName] = useState('');
-  const [fileLink, setFileLink] = useState('');
-  const [jobDescription, setJobDescription] = useState('');
-
-  const [parseWarning, setParseWarning] = useState<null | string>(null);
-
-  const handleUploadResume = async (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const arrayBuffer = await file.arrayBuffer();
-
-    const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
-    const pdfDoc = await loadingTask.promise;
-
-    const resumeData = await parseResumeData(pdfDoc);
-    const pageCount = pdfDoc.numPages;
-
-    if (pageCount > 1) {
-      setParseWarning(
-        'Note: This PDF has multiple pages, but parsing currently only processes the first page.'
-      );
-    } else {
-      setParseWarning(null); // or clear it
-    }
-
-    setResumeData(resumeData);
-    setResumeName(file.name);
-    setResumeRawFile(file);
-    setFileLink(URL.createObjectURL(file));
   };
+  parseWarning?: string | null;
+};
+
+enum Step {
+  Select = 0,
+  Analyze = 1,
+}
+
+export default function Main() {
+  const [step, setStep] = useState<Step>(Step.Select);
+  const [resume, setResume] = useState<ResumeState>({
+    file: null,
+    name: '',
+    url: '',
+    data: undefined,
+    parseWarning: null,
+  });
+  const [jobDescription, setJobDescription] = useState('');
 
   const resumeSuggestionsRef = useRef<ResumeSuggestionsHandle>(null);
   const resumeScoringRef = useRef<ResumeScoringHandle>(null);
 
-  const analyzeAll = () => {
+  const canAnalyze = useMemo(
+    () => Boolean(jobDescription && resume.file),
+    [jobDescription, resume.file]
+  );
+
+  const handleUploadResume = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      // Revoke old URL if any
+      if (resume.url) URL.revokeObjectURL(resume.url);
+
+      const arrayBuffer = await file.arrayBuffer();
+      const pdfDoc = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+
+      const parsed = await parseResumeData(pdfDoc);
+      const warning =
+        pdfDoc.numPages > 1
+          ? 'Note: This PDF has multiple pages, but parsing currently only processes the first page.'
+          : null;
+
+      setResume({
+        file,
+        name: file.name,
+        url: URL.createObjectURL(file),
+        data: parsed,
+        parseWarning: warning,
+      });
+
+      // Keep user on Select step until they click Analyze
+      setStep(Step.Select);
+    },
+    [resume.url]
+  );
+
+  const analyzeAll = useCallback(() => {
     resumeSuggestionsRef.current?.triggerSuggestions();
     resumeScoringRef.current?.triggerScoring();
-  };
+  }, []);
 
   return (
-    <>
-      <section
-        className={clsx(
-          'flex justify-center py-20 gap-15',
-          currentState == 0 ? 'w-fit px-6' : 'w-full px-20',
-          'mx-auto'
-        )}
-      >
-        {resumeRawFile && (
-          <div className="w-full max-w-xl">
-            <PdfViewer file={fileLink} />
+    <section
+      className={clsx(
+        'flex justify-center py-20 gap-15 mx-auto',
+        step === Step.Select ? 'w-fit px-6' : 'w-full px-20'
+      )}
+    >
+      <div className="flex gap-20">
+        {step === Step.Select ? (
+          <div className="sticky top-30 flex flex-col items-center">
+            <SelectResume
+              handleUploadResume={handleUploadResume}
+              resumeName={resume.name}
+            />
+            {resume.name && (
+              <SmartButton
+                label={`Analyze ${resume.name}`}
+                onClick={() => setStep(Step.Analyze)}
+                isProUser
+                color="purple"
+                icon={<CircleArrowRight strokeWidth={1.5} size={18} />}
+                className="mt-4"
+              />
+            )}
           </div>
-        )}
-        <div className="justify-center  w-fit">
-          {currentState === 0 && (
-            <>
-              <div className="sticky top-30 flex flex-col items-center">
-                <SelectResume
-                  handleUploadResume={handleUploadResume}
-                  resumeName={resumeName}
-                />
-                {resumeName && (
-                  <SmartButton
-                    label={`Analyze ${resumeName}`}
-                    onClick={() => setCurrentState(1)}
-                    isProUser={true}
-                    color="purple"
-                    icon={<CircleArrowRight strokeWidth={1.5} size={18} />}
-                    className="mt-4"
-                  />
-                )}
-              </div>
-            </>
-          )}
+        ) : (
+          <>
+            <div className="w-full max-w-2xl">
+              {resume.url && <PdfViewer file={resume.url} />}
+            </div>
 
-          {currentState === 1 && (
-            <>
-              <div className="flex flex-col gap-10 w-full max-w-3xl">
-                {parseWarning && (
-                  <div className="mt-4 p-3 bg-yellow-100 border-l-4 border-yellow-400 text-yellow-800 text-sm rounded">
-                    {parseWarning}
-                  </div>
-                )}
+            <div>
+              {resume.parseWarning && (
+                <Banner tone="warn" className="mb-4">
+                  {resume.parseWarning}
+                </Banner>
+              )}
 
-                {resumeData && <ResumeSummary resumeData={resumeData} />}
+              {resume.data && <ResumeSummary resumeData={resume.data} />}
+
+              <div className="mb-4">
+                <h1 className="text-xl font-semibold text-gray-900">
+                  Job Description
+                </h1>
+                <p className="text-sm text-gray-700 mt-1 mb-2">
+                  Paste the job posting or role description here. This will be
+                  used to match your resume's skills, keywords, and experience
+                  for targeted analysis.
+                </p>
 
                 {!jobDescription && (
-                  <div className="mt-4 p-3 bg-yellow-100 border-l-4 border-yellow-400 text-yellow-800 text-sm rounded">
-                    To see full analysis, paste a job description below:
-                  </div>
+                  <Banner tone="warn">
+                    To see full analysis, paste a job description below.
+                  </Banner>
                 )}
 
                 <textarea
-                  className="w-full h-40 border border-gray-300 rounded p-2 text-sm"
+                  className="w-full h-40 border border-gray-300 rounded p-2 text-sm outline-none"
                   placeholder="Paste job description here..."
                   value={jobDescription}
                   onChange={(e) => setJobDescription(e.target.value)}
                 />
 
-                {jobDescription && resumeRawFile && (
-                  <>
-                    <SmartButton
-                      onClick={analyzeAll}
-                      label={'Trigger'}
-                      color="purple"
-                      className="w-full flex justify-center"
-                    />
-
-                    <ResumeSuggestions
-                      file={resumeRawFile}
-                      jobDescription={jobDescription}
-                      ref={resumeSuggestionsRef}
-                    />
-                    <ResumeScoring
-                      file={resumeRawFile}
-                      jobDescription={jobDescription}
-                      ref={resumeScoringRef}
-                    />
-                    <ResumeRewriter
-                      file={resumeRawFile}
-                      jobDescription={jobDescription}
-                    />
-                    <CoverLetterWriter
-                      file={resumeRawFile}
-                      jobDescription={jobDescription}
-                    />
-                  </>
+                {canAnalyze && (
+                  <SmartButton
+                    onClick={analyzeAll}
+                    label="Analyze"
+                    color="purple"
+                    className="w-full flex justify-center mt-4"
+                  />
                 )}
               </div>
-            </>
-          )}
-        </div>
-      </section>
-    </>
+
+              {canAnalyze && (
+                <>
+                  {resume.file && (
+                    <>
+                      <ResumeRewriter
+                        file={resume.file}
+                        jobDescription={jobDescription}
+                      />
+                      <CoverLetterWriter
+                        file={resume.file}
+                        jobDescription={jobDescription}
+                      />
+                      <ResumeScoring
+                        file={resume.file}
+                        jobDescription={jobDescription}
+                        ref={resumeScoringRef}
+                      />
+                      <ResumeSuggestions
+                        file={resume.file}
+                        jobDescription={jobDescription}
+                        ref={resumeSuggestionsRef}
+                      />
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 
-type SelectResumeProps = {
-  handleUploadResume: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
+function SelectResume({
+  handleUploadResume,
+  resumeName,
+}: {
+  handleUploadResume: (e: ChangeEvent<HTMLInputElement>) => Promise<void>;
   resumeName: string;
-};
-
-function SelectResume({ handleUploadResume, resumeName }: SelectResumeProps) {
+}) {
   return (
-    <>
-      <main className="flex flex-col items-center h-fit w-full px-8 ">
-        <div className="relative w-48 h-48 hover:opacity-80 transition-opacity rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center cursor-pointer">
-          <Plus className="w-12 h-12 text-gray-500" strokeWidth={1.5} />
-          <input
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            type="file"
-            accept=".pdf"
-            onChange={handleUploadResume}
-          />
-        </div>
-        <p className="mt-4 text-sm text-gray-600">
-          {resumeName ? 'Upload different resume' : 'Upload resume'}
-        </p>
-        <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600 max-w-md text-center">
-          Files are securely sent to our server for processing and are not
-          stored after analysis.
-        </div>
-
-        <SmartButton
-          label={'Select From Saved'}
-          color="zinc"
-          requiresPro
-          isProUser={false}
-          className="mt-4"
+    <main className="flex flex-col items-center h-fit w-full px-8">
+      <div className="relative w-48 h-48 hover:opacity-80 transition-opacity rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center cursor-pointer">
+        <Plus className="w-12 h-12 text-gray-500" strokeWidth={1.5} />
+        <input
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          type="file"
+          accept=".pdf"
+          onChange={handleUploadResume}
         />
-      </main>
-    </>
+      </div>
+
+      <p className="mt-4 text-sm text-gray-600">
+        {resumeName ? 'Upload different resume' : 'Upload resume'}
+      </p>
+
+      <Banner className="mt-4 ">
+        Files are securely sent to our server for processing and are not stored
+        after analysis.
+      </Banner>
+
+      <SmartButton
+        label="Select From Saved"
+        color="zinc"
+        requiresPro
+        isProUser={false}
+        className="mt-4"
+      />
+    </main>
+  );
+}
+
+function Banner({
+  children,
+  tone = 'info',
+  className,
+}: {
+  children: React.ReactNode;
+  tone?: 'info' | 'warn';
+  className?: string;
+}) {
+  const styles =
+    tone === 'warn'
+      ? 'bg-yellow-100 border-l-4 border-yellow-400 text-yellow-800'
+      : 'bg-gray-50 border border-gray-200 text-gray-600';
+  return (
+    <div className={clsx('rounded p-3 text-sm', styles, className)}>
+      {children}
+    </div>
   );
 }

@@ -1,12 +1,9 @@
 package services
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -18,266 +15,73 @@ type LLMService struct {
 	APIKey string
 }
 
-var geminiLimiter = make(chan struct{}, 10)
-
-func acquire() bool {
-	select {
-	case geminiLimiter <- struct{}{}:
-		return true
-	default:
-		return false
-	}
-}
-func release() { <-geminiLimiter }
-
 func NewLLMService() *LLMService {
-	return &LLMService{
-		APIKey: os.Getenv("GEMINI_API_KEY"),
-	}
+	return &LLMService{}
 }
 
-type GeminiContent struct {
-	Role  string       `json:"role"`
-	Parts []GeminiPart `json:"parts"`
-}
-
-type GeminiPart struct {
-	Text string `json:"text"`
-}
-
-type GeminiRequest struct {
-	Contents         []GeminiContent   `json:"contents"`
-	GenerationConfig *GenerationConfig `json:"generationConfig,omitempty"`
-}
-
-type GenerationConfig struct {
-	ResponseMimeType string `json:"responseMimeType,omitempty"`
-}
-
-type GeminiResponse struct {
-	Candidates []struct {
-		Content struct {
-			Parts []struct {
-				Text string `json:"text"`
-			} `json:"parts"`
-		} `json:"content"`
-	} `json:"candidates"`
-}
-
-func (s *LLMService) callGemini(prompt string) (string, error) {
-	if !acquire() {
-		return "", fmt.Errorf("callGemini: concurrency limit reached")
-	}
-	defer release()
-
-	fmt.Printf("Prompt size: %d bytes\n", len(prompt))
-
-	reqBody := GeminiRequest{
-		Contents: []GeminiContent{
-			{
-				Role: "user",
-				Parts: []GeminiPart{
-					{Text: prompt},
-				},
-			},
-		},
-		GenerationConfig: &GenerationConfig{
-			ResponseMimeType: "application/json",
-		},
-	}
-
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", fmt.Errorf("callGemini: failed to marshal request body: %w", err)
-	}
-
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=%s", s.APIKey)
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", fmt.Errorf("callGemini: failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("callGemini: request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("callGemini: failed to read response body: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("callGemini: API returned %d: %s", resp.StatusCode, string(body))
-	}
-
-	var parsed GeminiResponse
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return "", fmt.Errorf("callGemini: failed to parse JSON response: %w", err)
-	}
-
-	if len(parsed.Candidates) == 0 || len(parsed.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("callGemini: incomplete response")
-	}
-
-	return parsed.Candidates[0].Content.Parts[0].Text, nil
+type RewrittenResume struct {
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	Phone     string `json:"phone"`
+	LinkedIn  string `json:"linkedin"`
+	GitHub    string `json:"github"`
+	Summary   string `json:"summary"`
+	Education []struct {
+		Degree string `json:"degree"`
+		School string `json:"school"`
+		Date   string `json:"date"`
+	} `json:"education"`
+	Experience []struct {
+		Title   string   `json:"title"`
+		Company string   `json:"company"`
+		Date    string   `json:"date"`
+		Bullets []string `json:"bullets"`
+	} `json:"experience"`
+	Projects []struct {
+		Name    string   `json:"name"`
+		Date    string   `json:"date"`
+		Bullets []string `json:"bullets"`
+	} `json:"projects"`
+	Skills map[string][]string `json:"skills"`
 }
 
 // Resume Suggestions
-func (s *LLMService) GetSuggestions(resumeText, jobDescription string) (string, error) {
-	prompt := fmt.Sprintf(`
-You are a helpful assistant that reviews a candidate's resume and provides structured suggestions to improve alignment with a job description.
-
-Resume Text:
-%s
-
-Job Description:
-%s
-
-Please return your response strictly as a JSON object in the following format:
-
-{
-  "missing_skills": ["string", "string"],
-  "keyword_gaps": ["string", "string"],
-  "experience_alignment": ["string", "string"],
-  "general_advice": ["string", "string"]
-}
-
-Only output a valid JSON object.`, resumeText, jobDescription)
-
-	return s.callGemini(prompt)
-}
-
-func (s *LLMService) RewriteResume(resumeText string, jobDescription string, missingSkills []string) (json.RawMessage, error) {
+func (s *LLMService) GetSuggestions(resumeText, jobDescription string) (json.RawMessage, error) {
 	client := openai.NewClient(os.Getenv("OPENAI_API_KEY"))
 
-	systemPrompt := `You are an expert resume optimizer. Your task is to transform the following resume into a highly effective, modern, and **job-specific** version that excels with both **human recruiters** and **Applicant Tracking Systems (ATS)**.
+	systemPrompt := `You are an expert resume analyst. Your task is to review a candidate's resume and evaluate how well it aligns with a given job description. You will be talking directly to the candidate. You should use easy to understand and specific language.
 
-This is not a surface-level edit. You must **rewrite and restructure** the resume with precision and judgment, applying best practices for one-page technical resumes.
+You must return **only** a valid JSON object in the exact format below:
 
-Extract and match as many keywords, tools, and phrasing from the job description as possible in a natural way. Prioritize noun phrases and skills verbs used in the JD.
-
-Score the relevance of each experience or project against the job description. Keep only the highest scoring ones that match the required skills, duties, or technologies in the job post.
-
-The summary must include 8–10 key phrases directly derived from the job description.
-
-### Key Goals:
-- Prioritize **clarity**, **impact**, and **alignment with the job description**
-- Use concise, quantifiable, and outcome-driven language
-- Highlight **relevant technologies**, **measurable results**, and **business value**
-- **Maximize ATS compatibility by incorporating high-impact, job-relevant keywords naturally throughout the resume—especially in bullet points, summary, and skills**
-- Ensure keyword integration does not come at the cost of clarity or readability to a human reviewer
-- Remove or condense less relevant roles/projects to ensure tight, high-impact content
-- Completely discard original bullet phrasing—**do not just improve language**, rewrite to emphasize value
-- Avoid generic adjectives (e.g., "motivated," "hardworking") and use **concrete skills**, **tools**, and **outcomes**
-- From the remaining roles/projects you choose to keep, they should be reordered to most recent first.
-- Extract and integrate as many specific keywords, tools, and task phrases from the job description as possible. Focus especially on technical nouns, action verbs, and industry-standard terminology.
-- Ensure the top 20 skills match or strongly align with those listed in the job description.
-- Eliminate any soft-skill-oriented or vague phrasing that does not contribute to ATS keyword matching.
-- Avoid unecessary filler, each point should be clear
-
-### Rewrite and Optimize:
-You must revise the following fields:
-- summary
-- experience[].bullets
-- projects[].bullets
-- skills
-
-### Missing Skills Guidance:
-Below is a list of potentially missing or underemphasized job-relevant skills:
-
-{{missingSkills}}
-
-If these skills appear inferable from the resume (e.g., based on responsibilities described in projects, job titles, or general technical scope), **integrate them naturally** into relevant sections (e.g., summary, bullets, skills).
-
-You may also:
-- Use job description phrasing (verbs, tools, and duties) that reflect these skills
-- Expand or rephrase vague bullet points to more explicitly state a skill or tool the resume clearly implies
-- Surface skills that were buried in broad terms (e.g., rephrase "built web app" to mention "React," "REST API," or "authentication" if applicable)
-- Try to match as many job description skills as possible, if reasonably applicable.
-
-**Do not fabricate skills or achievements.** Only include skills if they are clearly supported or reasonably implied by the resume content.
-
-### Bullet Guidelines:
-- Every bullet must follow the **X-Y-Z format**:
-  - **X:** What was done (action)
-  - **Y:** How it was done (tools, frameworks, methods)
-  - **Z:** Why it mattered (impact, metric, or value)
-- Use concise, single-sentence bullets (no filler)
-- **Each bullet must be ≤ 20 words**
-- **Use 1–3 bullets per experience or project**, prioritizing relevance. Fewer is often better.
-- You may **omit entire roles or projects** if they are not relevant or add no clear value
-- Use full sentences with proper punctuation and language.
-- Attempt to quantify where possible.
-
-### Summary and Skills Constraints:
-To ensure the resume fits **on one page at 11 pt font with standard margins**:
-- The **summary** must be ≤ 50 words and keyword-rich
-- The **skills** field must list **no more than 20 skills**, separated by commas
-
-### Global Page Limit Constraints:
-- Total number of bullets across all experience and projects must **not exceed 25**
-- You may remove or combine redundant content across roles or projects
-
-### You MAY:
-- Adjust job titles for clarity if they were informal or vague, or to better fit the job description given that the modified version is the same thing.
-- Create new, plausible bullets based on reasonable inferences
-- Remove low-value or outdated experiences/projects
-- Improve clarity or conciseness in any field while preserving the original keys
-
-### You MUST NOT:
-- Keep original bullet phrasing or structure
-- Fabricate unrealistic or unverifiable achievements
-- Add or remove any top-level fields or keys
-- Include any line breaks, bullet characters, or markdown
-- Change the JSON format
-
-### Output Format:
-Return only a valid JSON object in the following format:
-
-{ 
-  "name": "string",
-  "email": "string",
-  "phone": "string",
-  "linkedin": "string",
-  "github": "string",
-  "summary": "string",
-  "education": "string",
-  "experience": [
-    {
-      "title": "string",
-      "company": "string",
-      "date": "string",
-      "bullets": ["string", "string", ...]
-    }
-  ],
-  "projects": [
-    {
-      "name": "string",
-      "date": "string",
-      "bullets": ["string", "string", ...]
-    }
-  ],
-  "skills": "string"
+{
+  "missing_skills": string[],
+  "keyword_gaps": string[],
+  "experience_alignment": string[],
+  "general_advice": string[]
 }
 
-Return only the transformed JSON object. Do not include commentary, labels, or explanations.`
+Definitions:
+- "missing_skills": Skills mentioned in the job description that are not clearly present in the resume.
+- "keyword_gaps": Relevant terms or phrases from the job description that are absent in the resume.
+- "experience_alignment": Specific ways the candidate's experience either matches or partially matches the job requirements.
+- "general_advice": Actionable suggestions for improving alignment, excluding skills or keywords.
 
-	missingSkillsText := strings.Join(missingSkills, ", ")
-
-	injectedPrompt := strings.Replace(systemPrompt, "{{missingSkills}}", missingSkillsText, 1)
+Strict instructions:
+- Do not fabricate experience or qualifications not present in the resume.
+- Be concrete and precise. Avoid generic or vague suggestions.
+- Do not include markdown, labels, commentary, or formatting outside the JSON object.
+- You must include at least 1 item per key.
+- Do not use em dashes or non-standard punctuation.
+- Output **only** the JSON object. Nothing more.`
 
 	userPrompt := fmt.Sprintf("Resume:\n%s\n\nJob Description:\n%s", resumeText, jobDescription)
 
 	resp, err := client.CreateChatCompletion(
 		context.Background(),
 		openai.ChatCompletionRequest{
-			Model: openai.GPT4Dot1Nano,
+			Model: openai.GPT4Dot1Mini,
 			Messages: []openai.ChatCompletionMessage{
-				{Role: openai.ChatMessageRoleSystem, Content: injectedPrompt},
+				{Role: openai.ChatMessageRoleSystem, Content: systemPrompt},
 				{Role: openai.ChatMessageRoleUser, Content: userPrompt},
 			},
 			Temperature: 0.3,
@@ -288,6 +92,142 @@ Return only the transformed JSON object. Do not include commentary, labels, or e
 	}
 
 	return json.RawMessage(resp.Choices[0].Message.Content), nil
+}
+
+func (s *LLMService) RewriteResume(resumeText string, jobDescription string, missingSkills []string) (*RewrittenResume, error) {
+	client := openai.NewClient(os.Getenv("OPENAI_API_KEY"))
+
+	systemPrompt := `You are a senior technical resume rewriting specialist.  
+Your job is to transform the provided resume into a **highly targeted, job-specific version** that excels with both **Applicant Tracking Systems (ATS)** and human recruiters.  
+This is a **complete rewrite**, not an edit — restructure and reword for maximum **relevance, precision, and measurable impact** based on the given job description.
+
+---
+
+## Primary Goals
+1. **Tightly align** the resume with the provided job description.
+2. **Maximize ATS match** by integrating job-specific keywords, action verbs, and relevant domain terms naturally.
+3. Use **concise, results-focused language** that highlights measurable business value and technical execution.
+4. Maintain a **modern, one-page format** with ruthless prioritization of relevance.
+
+---
+
+## Rewrite Rules
+- Rewrite the following sections entirely:  
+  summary, experience[].bullets, projects[].bullets, skills
+- Follow **X–Y–Z structure** for every bullet:  
+  - **X (Action):** What was done  
+  - **Y (Tool/Method):** How it was done  
+  - **Z (Impact):** Why it mattered or what it achieved
+- 1–3 bullets per role or project.  
+- Each bullet should contain **specific, measurable results** where reasonable. Never invent unsupported numbers.
+- Use **complete sentences**, max 20 words each.
+- Remove vague or soft-skill-focused bullets — prioritize **technical depth and results**.
+
+---
+
+## Skill Integration
+You are given {{missingSkills}}.  
+These are critical skills from the job description that are missing or underemphasized in the original resume.  
+
+You must:
+- Include these skills wherever they can be **reasonably inferred** from the candidate’s work.  
+- Use **exact job description phrasing** when integrating them.  
+- Favor technical nouns and strong verbs (e.g., “Built RESTful APIs with Express.js” instead of “Developed backend”).  
+- Do not fabricate experience with skills that cannot be plausibly supported.
+
+---
+
+## Section-Specific Guidelines
+### Summary
+- ≤ 50 words.  
+- Include 8–10 job-relevant keywords from the job description.
+
+### Skills
+- Max 20 skills, grouped into **no more than 4 categories**.  
+- Categories should be relevant to the role.  
+- Skills must be comma-separated within each category.
+
+### Experience & Projects
+- Total combined bullets ≤ 25 across all roles and projects.  
+- Reverse chronological order.  
+- Combine or remove low-relevance entries.  
+- Emphasize tech stack, architecture, integrations, performance, deployment, and user impact.  
+- Reorder or relabel job titles if it improves clarity and alignment with the job description.
+
+---
+
+## Prohibited
+- Keeping any original phrasing or structure.
+- Adding new top-level sections.
+- Outputting anything except the required JSON.
+
+---
+
+## Output Format
+Return **only** a valid JSON object in this structure:
+
+{
+  "name": string,
+  "email": string,
+  "phone": string,
+  "linkedin": string,
+  "github": string,
+  "summary": string,
+  "education": [{degree: string, school: string, date: string}],
+  "experience": [
+    {
+      "title": string,
+      "company": string,
+      "date": string,
+      "bullets": string[]
+    }
+  ],
+  "projects": [
+    {
+      "name": string,
+      "date": string,
+      "bullets": string[]
+    }
+  ],
+  "skills": {category: string[]}
+}
+
+`
+
+	missingSkillsText := strings.Join(missingSkills, ", ")
+
+	injectedPrompt := strings.Replace(systemPrompt, "{{missingSkills}}", missingSkillsText, 1)
+
+	userPrompt := fmt.Sprintf("Resume:\n%s\n\nJob Description:\n%s", resumeText, jobDescription)
+
+	start := time.Now()
+
+	resp, err := client.CreateChatCompletion(
+		context.Background(),
+		openai.ChatCompletionRequest{
+			Model: "gpt-5-nano",
+			Messages: []openai.ChatCompletionMessage{
+				{Role: openai.ChatMessageRoleSystem, Content: injectedPrompt},
+				{Role: openai.ChatMessageRoleUser, Content: userPrompt},
+			},
+			ResponseFormat: &openai.ChatCompletionResponseFormat{
+				Type: "json_object",
+			},
+		},
+	)
+
+	duration := time.Since(start)
+	fmt.Printf("OpenAI call took %s\n", duration)
+
+	if err != nil {
+		return nil, fmt.Errorf("OpenAI call failed: %w", err)
+	}
+
+	var rewritten RewrittenResume
+	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &rewritten); err != nil {
+		return nil, fmt.Errorf("failed to parse LLM output: %w", err)
+	}
+	return &rewritten, nil
 }
 
 func (s *LLMService) GenerateCoverLetter(resumeText, jobDescription string) (json.RawMessage, error) {

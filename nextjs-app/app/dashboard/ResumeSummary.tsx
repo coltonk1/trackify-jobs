@@ -17,8 +17,8 @@ type ResumeData = {
   workExperience?: ExperienceItem[];
   projects?: ProjectItem[];
   summary?: string;
-  skills?: string;
-  education?: string;
+  skills?: string[];
+  education?: string[];
   profile?: {
     name?: string;
     email?: string;
@@ -32,12 +32,119 @@ type KeywordAnalysisProps = {
 };
 
 function toTitleCase(str: string | undefined) {
-  if (!str) return;
+  if (!str) return '';
   return str.replace(
     /\w\S*/g,
     (text) => text.charAt(0).toUpperCase() + text.substring(1).toLowerCase()
   );
 }
+
+/* ---------- UI primitives for consistency ---------- */
+
+const Section = ({
+  title,
+  children,
+  description,
+  id,
+}: {
+  title: string;
+  children: React.ReactNode;
+  description?: string;
+  id?: string;
+}) => (
+  <section className="mb-6" aria-labelledby={id}>
+    <h2 id={id} className="text-lg font-semibold text-gray-800 mb-1">
+      {title}
+    </h2>
+    {description && <p className="text-xs text-gray-500 mb-2">{description}</p>}
+    {children}
+  </section>
+);
+
+const Placeholder = ({
+  children = '[Missing]',
+}: {
+  children?: React.ReactNode;
+}) => <span className="italic text-gray-400">{children}</span>;
+
+const TableShell = ({ children }: { children: React.ReactNode }) => (
+  <div className="overflow-hidden border border-gray-200 rounded">
+    <table className="w-full text-sm text-left text-gray-800">{children}</table>
+  </div>
+);
+
+const GridTable = ({
+  columns,
+  rows,
+}: {
+  columns: string[];
+  rows: React.ReactNode[][];
+}) => (
+  <TableShell>
+    <thead className="bg-gray-100 text-xs text-gray-600 uppercase">
+      <tr>
+        {columns.map((c) => (
+          <th key={c} className="px-3 py-2 font-medium">
+            {c}
+          </th>
+        ))}
+      </tr>
+    </thead>
+    <tbody>
+      {rows.length === 0 ? (
+        <tr>
+          <td className="px-3 py-3" colSpan={columns.length}>
+            <Placeholder>[No data]</Placeholder>
+          </td>
+        </tr>
+      ) : (
+        rows.map((cells, i) => (
+          <tr
+            key={i}
+            className="border-t border-gray-200 align-top even:bg-gray-50"
+          >
+            {cells.map((cell, j) => (
+              <td key={j} className="px-3 py-2">
+                {cell}
+              </td>
+            ))}
+          </tr>
+        ))
+      )}
+    </tbody>
+  </TableShell>
+);
+
+const BulletList = ({ items }: { items?: string[] }) => {
+  if (!Array.isArray(items) || items.length === 0)
+    return <Placeholder>[No bullet points]</Placeholder>;
+  return (
+    <ul className="list-nonoe space-y-1 text-xs text-gray-700">
+      {items.map((t, i) => (
+        <li key={i}>{t}</li>
+      ))}
+    </ul>
+  );
+};
+
+const ChipList = ({ items }: { items?: string[] }) => {
+  if (!Array.isArray(items) || items.length === 0)
+    return <Placeholder>[None]</Placeholder>;
+  return (
+    <ul className="flex flex-wrap gap-2 text-sm">
+      {items.map((s, i) => (
+        <li
+          key={i}
+          className="px-2 py-1 rounded border border-gray-200 bg-gray-50 text-gray-700"
+        >
+          {s}
+        </li>
+      ))}
+    </ul>
+  );
+};
+
+/* ---------- Main component ---------- */
 
 const ResumeSummary: React.FC<KeywordAnalysisProps> = ({ resumeData }) => {
   const { workExperience, projects, summary, skills, education, profile } =
@@ -45,235 +152,188 @@ const ResumeSummary: React.FC<KeywordAnalysisProps> = ({ resumeData }) => {
 
   return (
     <section className="text-sm text-gray-800 w-full">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-900">Resume Summary</h1>
+      <div className="mb-6 max-w-3xl">
+        <h1 className="text-xl font-semibold text-gray-900">Resume Parsing</h1>
         <p className="text-sm text-gray-700 mt-1">
-          This section displays a parsed summary of your resume. It extracts and
-          formats your content based on the uploaded file.
+          This section shows a structured breakdown of your resume as
+          interpreted by our parsing system. It extracts key elements such as
+          your professional summary, profile information, work experience,
+          projects, skills, and education from the document you uploaded.
         </p>
         <p className="text-sm text-gray-700 mt-2">
-          Use this view to verify that automated systems can interpret your
-          resume structure accurately. If anything is missing or misaligned,
-          adjust your formatting to improve compatibility with applicant
-          tracking systems.
+          The purpose of this view is to let you verify how your resume will
+          appear to automated systems such as applicant tracking systems (ATS)
+          and AI-powered recruiters. These systems often scan resumes without
+          looking at design or layout, relying solely on the raw text and
+          structure.
+        </p>
+        <p className="text-sm text-gray-700 mt-2">
+          As you review the parsed data, check for missing sections, incomplete
+          entries, formatting issues, or misaligned information. Pay particular
+          attention to job titles, company names, dates, and bullet points, as
+          these are critical for keyword matching and ranking in ATS.
+        </p>
+        <p className="text-sm text-gray-700 mt-2">
+          If something appears incorrect or is not detected, consider adjusting
+          your resume formatting. For example, simplify complex layouts, ensure
+          headings are clear, and avoid embedding important text in images or
+          graphics. You can then re-upload your updated resume to see if parsing
+          improves.
         </p>
       </div>
 
       {/* Summary */}
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold text-gray-800 mb-2">
-          Professional Summary
-        </h2>
+      <Section
+        title="Summary"
+        id="summary"
+        description="Your professional summary should be a brief, high-impact introduction at the top of your resume. 
+Use it to highlight your most relevant skills, achievements, and career goals in 3–5 concise sentences. 
+Tailor it to the specific job you’re applying for, focusing on the qualities and experience that align with the role. 
+Avoid generic statements and overused buzzwords; instead, demonstrate value with specific expertise, accomplishments, or metrics when possible. 
+This is also one of the best places to naturally integrate keywords and skills from the job description, improving your match score with applicant tracking systems (ATS) while keeping the text readable and authentic."
+      >
         {summary?.trim() ? (
-          <p className="text-sm text-gray-700">{summary}</p>
+          <GridTable
+            columns={['Description']}
+            rows={[
+              [
+                <span className="text-sm text-gray-700 whitespace-pre-wrap">
+                  {summary}
+                </span>,
+              ],
+            ]}
+          />
         ) : (
-          <span className="italic text-gray-400">[Missing summary]</span>
+          <Placeholder>[Missing summary]</Placeholder>
         )}
-      </div>
+      </Section>
 
       {/* Profile */}
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold text-gray-800 mb-2">Profile</h2>
+      <Section
+        title="Profile"
+        id="profile"
+        description="This section contains your core contact and personal information. 
+Ensure that your name is formatted professionally and matches your official documents. 
+Use a professional email address and include a phone number where you can be reliably reached. 
+Links should direct to professional or relevant resources such as your LinkedIn profile, personal website, portfolio, or GitHub. 
+Keep all information current and avoid including unnecessary personal details such as age, full address, or photos unless explicitly requested."
+      >
         {profile ? (
-          <table className="w-full text-sm text-left text-gray-800 border border-gray-200">
-            <tbody>
-              <tr className="border-t border-gray-200">
-                <td className="px-3 py-2 font-medium">Name</td>
-                <td className="px-3 py-2">
-                  {toTitleCase(profile.name) || (
-                    <span className="italic text-gray-400">[Missing name]</span>
-                  )}
-                </td>
-              </tr>
-              <tr className="border-t border-gray-200">
-                <td className="px-3 py-2 font-medium">Email</td>
-                <td className="px-3 py-2">
-                  {profile.email || (
-                    <span className="italic text-gray-400">
-                      [Missing email]
-                    </span>
-                  )}
-                </td>
-              </tr>
-              <tr className="border-t border-gray-200">
-                <td className="px-3 py-2 font-medium">Phone</td>
-                <td className="px-3 py-2">
-                  {profile.phone || (
-                    <span className="italic text-gray-400">
-                      [Missing phone]
-                    </span>
-                  )}
-                </td>
-              </tr>
-              <tr className="border-t border-gray-200">
-                <td className="px-3 py-2 font-medium">Links</td>
-                <td className="px-3 py-2">
-                  {Array.isArray(profile.links) && profile.links.length > 0 ? (
-                    <ul className="list-none list-inside space-y-1">
-                      {profile.links.map((link, idx) => (
-                        <li
-                          key={idx}
-                          className="text-blue-600 underline break-all"
-                        >
-                          {link}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <span className="italic text-gray-400">
-                      [No links provided]
-                    </span>
-                  )}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <GridTable
+            columns={['Field', 'Value']}
+            rows={[
+              [
+                'Name',
+                profile.name?.trim() ? (
+                  toTitleCase(profile.name)
+                ) : (
+                  <Placeholder>[Missing name]</Placeholder>
+                ),
+              ],
+              [
+                'Email',
+                profile.email?.trim() ? (
+                  profile.email
+                ) : (
+                  <Placeholder>[Missing email]</Placeholder>
+                ),
+              ],
+              [
+                'Phone',
+                profile.phone?.trim() ? (
+                  profile.phone
+                ) : (
+                  <Placeholder>[Missing phone]</Placeholder>
+                ),
+              ],
+              ['Links', <LinkList links={profile.links} />],
+            ]}
+          />
         ) : (
-          <span className="italic text-gray-400">[Missing profile]</span>
+          <Placeholder>[Missing profile]</Placeholder>
         )}
-      </div>
+      </Section>
 
       {/* Experience */}
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold text-gray-800 mb-2">Experience</h2>
+      <Section
+        title="Experience"
+        id="experience"
+        description="This section should clearly outline your work history in reverse chronological order, starting with your most recent position. Include your job title, company, dates of employment, and concise bullet points describing your achievements and responsibilities. Focus on results and measurable impact rather than listing only duties. Use action verbs, keep each bullet point under two lines, and tailor your experience to highlight the skills and accomplishments most relevant to the role you're applying for."
+      >
         {Array.isArray(workExperience) && workExperience.length > 0 ? (
-          <table className="w-full text-sm text-left text-gray-800 border border-gray-200">
-            <thead className="bg-gray-100 text-xs text-gray-600 uppercase">
-              <tr>
-                <th className="px-3 py-2 font-medium">Job Title</th>
-                <th className="px-3 py-2 font-medium">Company</th>
-                <th className="px-3 py-2 font-medium">Date</th>
-                <th className="px-3 py-2 font-medium">Bullet Points</th>
-              </tr>
-            </thead>
-            <tbody>
-              {workExperience.map((item, index) => (
-                <tr
-                  key={index}
-                  className="border-t border-gray-200 align-top even:bg-gray-100"
-                >
-                  <td className="px-3 py-2">
-                    {item.job_title?.trim() || (
-                      <span className="italic text-gray-400">
-                        [Missing job title]
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    {item.company?.trim() || (
-                      <span className="italic text-gray-400">
-                        [Missing company]
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    {item.date?.trim() || (
-                      <span className="italic text-gray-400">
-                        [Missing date]
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    {Array.isArray(item.description) &&
-                    item.description.length > 0 ? (
-                      <ul className="list-none list-inside space-y-1 text-xs text-gray-700">
-                        {item.description.map((desc, idx) => (
-                          <li key={idx}>{desc}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <span className="italic text-gray-400">
-                        [No bullet points]
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <GridTable
+            columns={['Job Title', 'Company', 'Date', 'Bullet Points']}
+            rows={workExperience.map((item) => [
+              item.job_title?.trim() || (
+                <Placeholder>[Missing job title]</Placeholder>
+              ),
+              item.company?.trim() || (
+                <Placeholder>[Missing company]</Placeholder>
+              ),
+              item.date?.trim() || <Placeholder>[Missing date]</Placeholder>,
+              <BulletList items={item.description} />,
+            ])}
+          />
         ) : (
-          <span className="italic text-gray-400">
-            [No experience data found]
-          </span>
+          <Placeholder>[No experience data found]</Placeholder>
         )}
-      </div>
+      </Section>
 
       {/* Projects */}
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold text-gray-800 mb-2">Projects</h2>
+      <Section
+        title="Projects"
+        id="projects"
+        description="Some roles, especially in software, engineering, marketing, and design, expect a dedicated projects section to showcase relevant work. In other fields, projects may be optional or better integrated into the experience section. Include projects that are relevant to the job you're applying for, highlight measurable results or impact, and keep descriptions concise. If possible, link to live demos, portfolios, or case studies so employers can see your work in action."
+      >
         {Array.isArray(projects) && projects.length > 0 ? (
-          <table className="w-full text-sm text-left text-gray-800 border border-gray-200">
-            <thead className="bg-gray-100 text-xs text-gray-600 uppercase">
-              <tr>
-                <th className="px-3 py-2 font-medium">Title</th>
-                <th className="px-3 py-2 font-medium">Date</th>
-                <th className="px-3 py-2 font-medium">Bullet Points</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projects.map((item, index) => (
-                <tr
-                  key={index}
-                  className="border-t border-gray-200 align-top even:bg-gray-100"
-                >
-                  <td className="px-3 py-2">
-                    {item.title?.trim() || (
-                      <span className="italic text-gray-400">
-                        [Missing title]
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    {item.date?.trim() || (
-                      <span className="italic text-gray-400">
-                        [Missing date]
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    {Array.isArray(item.description) &&
-                    item.description.length > 0 ? (
-                      <ul className="list-none list-inside space-y-1 text-xs text-gray-700">
-                        {item.description.map((desc, idx) => (
-                          <li key={idx}>{desc}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <span className="italic text-gray-400">
-                        [No bullet points]
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <GridTable
+            columns={['Title', 'Date', 'Bullet Points']}
+            rows={projects.map((p) => [
+              p.title?.trim() || <Placeholder>[Missing title]</Placeholder>,
+              p.date?.trim() || <Placeholder>[Missing date]</Placeholder>,
+              <BulletList items={p.description} />,
+            ])}
+          />
         ) : (
-          <span className="italic text-gray-400">[No projects listed]</span>
+          <Placeholder>[No projects listed]</Placeholder>
         )}
-      </div>
+      </Section>
 
       {/* Skills */}
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold text-gray-800 mb-2">Skills</h2>
-        {skills?.trim() ? (
-          <p className="text-sm text-gray-700">{skills}</p>
-        ) : (
-          <span className="italic text-gray-400">[No skills found]</span>
-        )}
-      </div>
+      <Section title="Skills" id="skills">
+        <ChipList items={skills} />
+      </Section>
 
       {/* Education */}
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold text-gray-800 mb-2">Education</h2>
-        {education?.trim() ? (
-          <p className="text-sm text-gray-700">{education}</p>
+      <Section title="Education" id="education">
+        {Array.isArray(education) && education.length > 0 ? (
+          <ul className="list-disc pl-5 space-y-1 text-sm text-gray-700">
+            {education.map((e, i) => (
+              <li key={i}>{e}</li>
+            ))}
+          </ul>
         ) : (
-          <span className="italic text-gray-400">[No education found]</span>
+          <Placeholder>[No education found]</Placeholder>
         )}
-      </div>
+      </Section>
     </section>
   );
 };
+
+// Optional helper for reuse
+const LinkList = ({ links }: { links?: string[] }) =>
+  Array.isArray(links) && links.length > 0 ? (
+    <ul className="list-none space-y-1">
+      {links.map((link, i) => (
+        <li key={i} className="text-blue-600 underline break-all">
+          <a href={link} target="_blank" rel="noreferrer">
+            {link}
+          </a>
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <Placeholder>[No links provided]</Placeholder>
+  );
 
 export default ResumeSummary;

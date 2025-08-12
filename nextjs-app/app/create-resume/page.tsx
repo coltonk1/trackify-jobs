@@ -92,6 +92,9 @@ function ResumeDocument({ data }) {
     skills,
     customSections,
   } = data;
+
+  console.log(data);
+
   return (
     <Document>
       <Page style={styles.page} wrap>
@@ -105,64 +108,92 @@ function ResumeDocument({ data }) {
           </Text>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.subHeader}>Summary</Text>
-          <Text>{summary}</Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.subHeader}>Education</Text>
-          <Text>{education}</Text>
-          {/* <View style={styles.jobHeader}>
-            <Text>{'University of Georgia'}</Text>
-            <Text>{'Dec 2025'}</Text>
+        {summary && (
+          <View style={styles.section}>
+            <Text style={styles.subHeader}>Summary</Text>
+            <Text hyphenationCallback={(word) => [word]}>{summary}</Text>
           </View>
-          <Text style={styles.jobCompany}>
-            {'Bachelor of Science in Computer Science'}
-          </Text> */}
-        </View>
+        )}
 
-        <View style={styles.section}>
-          <Text style={styles.subHeader}>Experience</Text>
-          {experience.map((exp, idx) => (
-            <View key={idx}>
-              <View style={styles.jobHeader}>
-                <Text>{exp.title}</Text>
-                <Text>{exp.date}</Text>
-              </View>
-              <Text style={styles.jobCompany}>{exp.company}</Text>
-              {exp.bullets.map((line, i) => (
-                <View style={styles.bulletRow} key={i}>
-                  <Text style={styles.bulletPoint}>•</Text>
-                  <Text style={styles.bulletText}>{line}</Text>
+        {education?.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.subHeader}>Education</Text>
+            {education.map((edu, i) => (
+              <View key={i}>
+                <View style={styles.jobHeader}>
+                  <Text>{edu.school}</Text>
+                  <Text>{edu.date}</Text>
                 </View>
-              ))}
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.subHeader}>Projects</Text>
-          {projects.map((proj, idx) => (
-            <View key={idx}>
-              <View style={styles.jobHeader}>
-                <Text>{proj.name}</Text>
-                <Text>{proj.date}</Text>
+                <Text style={styles.jobCompany}>{edu.degree}</Text>
               </View>
-              {proj.bullets.map((line, i) => (
-                <View style={styles.bulletRow} key={i}>
-                  <Text style={styles.bulletPoint}>•</Text>
-                  <Text style={styles.bulletText}>{line}</Text>
-                </View>
-              ))}
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
+        )}
 
-        <View style={styles.section}>
-          <Text style={styles.subHeader}>Skills</Text>
-          <Text>{skills}</Text>
-        </View>
+        {experience?.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.subHeader}>Experience</Text>
+            {experience.map((exp, idx) => (
+              <View key={idx}>
+                <View style={styles.jobHeader}>
+                  <Text>{exp.title}</Text>
+                  <Text>{exp.date}</Text>
+                </View>
+                <Text style={styles.jobCompany}>{exp.company}</Text>
+                {exp.bullets.map((line, i) => (
+                  <View style={styles.bulletRow} key={i}>
+                    <Text style={styles.bulletPoint}>•</Text>
+                    <Text
+                      hyphenationCallback={(word) => [word]}
+                      style={styles.bulletText}
+                    >
+                      {line}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+          </View>
+        )}
+
+        {projects?.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.subHeader}>Projects</Text>
+            {projects.map((proj, idx) => (
+              <View key={idx}>
+                <View style={styles.jobHeader}>
+                  <Text>{proj.name}</Text>
+                  <Text>{proj.date}</Text>
+                </View>
+                {proj.bullets.map((line, i) => (
+                  <View style={styles.bulletRow} key={i}>
+                    <Text style={styles.bulletPoint}>•</Text>
+                    <Text
+                      hyphenationCallback={(word) => [word]}
+                      style={styles.bulletText}
+                    >
+                      {line}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+          </View>
+        )}
+
+        {skills && Object.keys(skills).length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.subHeader}>Skills</Text>
+            {Object.entries(skills).map(([category, items], i) => (
+              <View key={i} style={{ marginBottom: 2 }}>
+                <Text hyphenationCallback={(word) => [word]}>
+                  <Text style={{ fontWeight: 'bold' }}>{category}: </Text>
+                  <Text>{items.join(', ')}</Text>
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         {customSections?.map((section, index) => (
           <View style={styles.section} key={index}>
@@ -181,57 +212,19 @@ function ResumeDocument({ data }) {
 }
 
 const defaultForm = {
-  name: 'First Last',
-  email: 'email@example.com',
-  phone: '123-456-7890',
-  linkedin: 'linkedin.com/in/yourprofile',
-  github: 'github.com/yourhandle',
-  summary:
-    'Aspiring software engineer with hands-on experience in full-stack development, API integration, and collaborative project delivery. Skilled in modern web technologies and driven to build scalable, maintainable applications.',
-  education: 'B.S. in Computer Science, Example University, 2025',
-  experience: [
-    {
-      title: 'Software Developer Intern',
-      company: 'Example Company',
-      date: 'May 2024 – Aug 2024',
-      bullets: [
-        'Developed web-based tools using a modern JavaScript framework and integrated backend services',
-        'Collaborated with a team to launch internal tools that reduced manual processes by 30%',
-        'Wrote unit and integration tests to improve code reliability and maintainability',
-      ],
-    },
-    {
-      title: 'Tech Support Assistant',
-      company: 'Campus IT Services',
-      date: 'Jan 2023 – May 2024',
-      bullets: [
-        'Handled technical support requests and resolved hardware/software issues for students and staff',
-        'Documented troubleshooting procedures and trained new support staff',
-        'Assisted in deploying updates across lab computers using scripting tools',
-      ],
-    },
-  ],
-  projects: [
-    {
-      name: 'Project One',
-      date: '2024',
-      bullets: [
-        'Built a full-stack application for managing tasks using a modern web framework and REST APIs',
-        'Implemented authentication and data persistence with a cloud-based backend',
-        'Deployed the project using CI/CD and containerization tools',
-      ],
-    },
-    {
-      name: 'Project Two',
-      date: '2023',
-      bullets: [
-        'Created an interactive frontend for visualizing user metrics using charting libraries',
-        'Connected frontend to a backend service to fetch and cache data efficiently',
-        'Focused on responsive design and performance optimization',
-      ],
-    },
-  ],
-  skills: 'JavaScript, Python, React, Node.js, SQL, Git, Docker, REST APIs',
+  name: '',
+  email: '',
+  phone: '',
+  linkedin: '',
+  github: '',
+  summary: '',
+  education: [{ degree: '', school: '', date: '' }],
+  experience: [],
+  projects: [],
+  skills: {
+    Languages: ['JavaScript', 'Python'],
+    Tools: ['Git', 'Docker'],
+  },
 };
 
 export default function ResumeBuilder() {
@@ -255,7 +248,7 @@ export default function ResumeBuilder() {
         const decoded = decompressFromEncodedURIComponent(raw);
         const parsed = JSON.parse(decoded);
         console.log(parsed);
-        setForm(parsed);
+        setForm(parsed.rewrites);
       } catch (err) {
         console.error('Invalid custom_resume JSON:', err);
       }
@@ -264,6 +257,7 @@ export default function ResumeBuilder() {
 
   // Render PDF to canvas on form update
   useEffect(() => {
+    console.log(form);
     const renderPdfToCanvas = async () => {
       const blob = await pdf(<ResumeDocument data={form} />).toBlob();
       const url = URL.createObjectURL(blob);
@@ -309,15 +303,7 @@ export default function ResumeBuilder() {
         {/* ==== LEFT PANEL: FORM ==== */}
         <div className="space-y-4">
           {/* Basic Info */}
-          {[
-            'name',
-            'email',
-            'phone',
-            'linkedin',
-            'github',
-            'education',
-            'skills',
-          ].map((key) => (
+          {['name', 'email', 'phone', 'linkedin', 'github'].map((key) => (
             <div key={key}>
               <label className="block mb-1 font-medium capitalize">{key}</label>
               <input
@@ -329,6 +315,147 @@ export default function ResumeBuilder() {
               />
             </div>
           ))}
+
+          {/* Education */}
+          <div>
+            <h2 className="text-lg font-semibold">Education</h2>
+            {form.education.map((edu, i) => (
+              <div key={i} className="border p-2 mb-2 space-y-2">
+                <input
+                  className="w-full border p-1"
+                  value={edu.degree}
+                  placeholder="Degree (e.g., B.S. in Computer Science)"
+                  onChange={(e) => {
+                    const copy = [...form.education];
+                    copy[i].degree = e.target.value;
+                    setForm((f) => ({ ...f, education: copy }));
+                  }}
+                />
+                <input
+                  className="w-full border p-1"
+                  value={edu.school}
+                  placeholder="School (e.g., University of Georgia)"
+                  onChange={(e) => {
+                    const copy = [...form.education];
+                    copy[i].school = e.target.value;
+                    setForm((f) => ({ ...f, education: copy }));
+                  }}
+                />
+                <input
+                  className="w-full border p-1"
+                  value={edu.date}
+                  placeholder="Date (e.g., Aug 2022 – Dec 2025)"
+                  onChange={(e) => {
+                    const copy = [...form.education];
+                    copy[i].date = e.target.value;
+                    setForm((f) => ({ ...f, education: copy }));
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    const filtered = form.education.filter((_, j) => j !== i);
+                    setForm((f) => ({ ...f, education: filtered }));
+                  }}
+                  className="text-sm text-red-600"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={() =>
+                setForm((f) => ({
+                  ...f,
+                  education: [
+                    ...f.education,
+                    { degree: '', school: '', date: '' },
+                  ],
+                }))
+              }
+              className="text-sm text-blue-600"
+            >
+              Add Education
+            </button>
+          </div>
+
+          {/* Skills */}
+          <div>
+            <h2 className="text-lg font-semibold">Skills</h2>
+            {Object.entries(form.skills).map(([category, items], i) => (
+              <div key={category + i} className="border p-2 mb-2 space-y-2">
+                {/* Edit Category Name */}
+                <input
+                  className="w-full border p-1"
+                  value={category}
+                  onChange={(e) => {
+                    const newKey = e.target.value;
+                    if (!newKey) return;
+                    setForm((f) => {
+                      const newSkills = { ...f.skills };
+                      delete newSkills[category];
+                      newSkills[newKey] = items;
+                      return { ...f, skills: newSkills };
+                    });
+                  }}
+                  placeholder="Category (e.g., Languages)"
+                />
+
+                {/* Edit Skill List */}
+                <textarea
+                  className="w-full border p-1 font-mono"
+                  value={items.join(', ')}
+                  onChange={(e) => {
+                    const updatedItems = e.target.value
+                      .split(',')
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    setForm((f) => ({
+                      ...f,
+                      skills: {
+                        ...f.skills,
+                        [category]: updatedItems,
+                      },
+                    }));
+                  }}
+                  placeholder="Skills (e.g., JavaScript, Python)"
+                />
+
+                {/* Remove Category */}
+                <button
+                  onClick={() => {
+                    const newSkills = { ...form.skills };
+                    delete newSkills[category];
+                    setForm((f) => ({ ...f, skills: newSkills }));
+                  }}
+                  className="text-sm text-red-600"
+                >
+                  Remove Category
+                </button>
+              </div>
+            ))}
+
+            {/* Add New Category */}
+            <button
+              onClick={() => {
+                const newCategory = prompt('Enter a new skill category name:');
+                if (!newCategory) return;
+                if (form.skills[newCategory]) {
+                  alert('That category already exists.');
+                  return;
+                }
+                setForm((f) => ({
+                  ...f,
+                  skills: {
+                    ...f.skills,
+                    [newCategory]: [],
+                  },
+                }));
+              }}
+              className="text-sm text-blue-600"
+            >
+              Add Skill Category
+            </button>
+          </div>
 
           {/* Summary */}
           <div>

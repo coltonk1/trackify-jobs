@@ -94,27 +94,35 @@ export default function CoverLetterWriter({
   );
 
   return (
-    <div className="p-4 border rounded shadow bg-white mt-4">
-      <button
-        onClick={generateCoverLetter}
-        disabled={loading}
-        className="mb-4 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
-      >
-        {loading ? 'Generating...' : 'Generate Cover Letter'}
-      </button>
-
-      {error && <p className="text-red-500 mb-3">{error}</p>}
+    <div className="">
+      <div className="mt-4 flex items-center justify-between gap-2 mb-3">
+        <button
+          onClick={generateCoverLetter}
+          disabled={loading}
+          className="px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 disabled:opacity-50 cursor-pointer flex gap-2 items-center"
+        >
+          {loading ? 'Generating…' : 'Generate Cover Letter'}
+          <img
+            src={
+              'https://media.nngroup.com/media/editor/2024/09/16/lyft_promotions_sparkles_icon.png'
+            }
+            alt="Uploaded resume preview"
+            className="rounded aspect-square h-4 brightness-1000"
+          />
+        </button>
+        {error && <p className="text-red-500 text-sm">{error}</p>}
+      </div>
 
       {coverLetter && (
         <div>
           <h2 className="text-lg font-semibold mb-2">Generated Cover Letter</h2>
           <textarea
-            className="w-full h-64 p-3 border border-gray-300 rounded text-sm font-mono"
+            className="w-full h-64 p-3 border border-gray-300 rounded text-sm font-mono outline-none"
             value={coverLetter}
             onChange={(e) => setCoverLetter(e.target.value)}
           />
 
-          <div className="mt-4">
+          <div className="mt-4 mb-4">
             <BlobProvider document={<CoverLetterPDF />}>
               {({ url, loading: pdfLoading }) =>
                 pdfLoading ? (

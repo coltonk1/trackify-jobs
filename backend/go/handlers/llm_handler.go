@@ -2,12 +2,23 @@
 package handlers
 
 import (
+	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"time"
+	"trackify-jobs/database"
 	"trackify-jobs/services"
+
+	"github.com/google/uuid"
 )
 
 type ResumeRewriteRequest struct {
@@ -40,10 +51,11 @@ type RecommendationsResponse struct {
 type LLMHandler struct {
 	LLMService *services.LLMService
 	NLPService *services.NLPService
+	DB         *database.PostgresDB
 }
 
-func NewLLMHandler(s *services.LLMService, n *services.NLPService) *LLMHandler {
-	return &LLMHandler{LLMService: s, NLPService: n}
+func NewLLMHandler(s *services.LLMService, n *services.NLPService, d *database.PostgresDB) *LLMHandler {
+	return &LLMHandler{LLMService: s, NLPService: n, DB: d}
 }
 
 func (h *LLMHandler) ResumeRewriteHandler(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +64,6 @@ func (h *LLMHandler) ResumeRewriteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Parse multipart form data
 	err := r.ParseMultipartForm(10 << 20)
 	if err != nil {
 		log.Printf("Failed to parse multipart form: %v", err)
@@ -60,7 +71,6 @@ func (h *LLMHandler) ResumeRewriteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Extract file from "resume_file"
 	file, header, err := r.FormFile("resume_file")
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Missing resume_file: %v", err), http.StatusBadRequest)
@@ -68,62 +78,226 @@ func (h *LLMHandler) ResumeRewriteHandler(w http.ResponseWriter, r *http.Request
 	}
 	defer file.Close()
 
-	// Extract resume_text and job_description from form fields
 	resumeText := r.FormValue("resume_text")
 	jobDescription := r.FormValue("job_description")
-
 	if resumeText == "" || jobDescription == "" {
 		http.Error(w, "Missing resume_text or job_description", http.StatusBadRequest)
 		return
 	}
 
-	// Analyze the uploaded file (NLP metadata, matched skills, etc.)
-	analysis, err := h.NLPService.Analyze(file, header, jobDescription)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("NLP analysis failed: %v", err), http.StatusInternalServerError)
-		return
-	}
+	jobID := uuid.NewString()
 
-	var parsedAnalysis map[string]interface{}
-	if err := json.Unmarshal([]byte(analysis), &parsedAnalysis); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to parse analysis JSON: %v", err), http.StatusInternalServerError)
-		return
-	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]string{
+		"job_id": jobID,
+		"status": "processing",
+	})
 
-	var lowSimilaritySkills []string
+	go func() {
+		log.Println("Starting")
 
-	// Get matched_skills from the parsed map
-	if matched, ok := parsedAnalysis["matched_skills"].([]interface{}); ok {
-		for _, item := range matched {
-			if skillMap, ok := item.(map[string]interface{}); ok {
-				sim, okSim := skillMap["similarity"].(float64)
-				skill, okSkill := skillMap["job_skill"].(string)
+		analysis, err := h.NLPService.Analyze(file, header, jobDescription)
+		if err != nil {
+			log.Printf("NLP analysis failed for job %s: %v", jobID, err)
+			h.saveJobError(jobID, err)
+			return
+		}
 
-				if okSim && okSkill && sim < 75 {
-					lowSimilaritySkills = append(lowSimilaritySkills, skill)
+		var parsedAnalysis map[string]interface{}
+		if err := json.Unmarshal([]byte(analysis), &parsedAnalysis); err != nil {
+			log.Printf("Failed to parse analysis JSON for job %s: %v", jobID, err)
+			h.saveJobError(jobID, err)
+			return
+		}
+
+		var lowSimilaritySkills []string
+		if matched, ok := parsedAnalysis["matched_skills"].([]interface{}); ok {
+			for _, item := range matched {
+				if skillMap, ok := item.(map[string]interface{}); ok {
+					if sim, okSim := skillMap["similarity"].(float64); okSim {
+						if skill, okSkill := skillMap["job_skill"].(string); okSkill && sim < 75 {
+							lowSimilaritySkills = append(lowSimilaritySkills, skill)
+						}
+					}
 				}
 			}
 		}
+
+		rewrites, err := h.LLMService.RewriteResume(resumeText, jobDescription, lowSimilaritySkills)
+		if err != nil {
+			log.Printf("Resume rewrite failed for job %s: %v", jobID, err)
+			h.saveJobError(jobID, err)
+			return
+		}
+
+		// ✅ Save results to DB so client can fetch later
+		err = h.saveJobResult(jobID, rewrites)
+		if err != nil {
+			log.Printf("Failed to save results for job %s: %v", jobID, err)
+		}
+
+		log.Println("Finished")
+	}()
+}
+
+func encryptAESGCM(key, plaintext []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
 	}
 
-	// Rewrite the provided resume text with job description
-	rewrites, err := h.LLMService.RewriteResume(resumeText, jobDescription, lowSimilaritySkills)
-	if err != nil {
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
 
-		http.Error(w, fmt.Sprintf("Resume rewrite failed: %v", err), http.StatusInternalServerError)
+	// ciphertext = nonce || gcm(nonce, plaintext)
+	ct := gcm.Seal(nonce, nonce, plaintext, nil)
+	return ct, nil
+}
+
+func decryptAESGCM(key, ciphertext []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	ns := gcm.NonceSize()
+	if len(ciphertext) < ns {
+		return nil, errors.New("ciphertext too short")
+	}
+
+	nonce, data := ciphertext[:ns], ciphertext[ns:]
+	pt, err := gcm.Open(nil, nonce, data, nil)
+	if err != nil {
+		return nil, err
+	}
+	return pt, nil
+}
+
+// QueryJob returns the status of a rewrite job and, if completed, the rewritten resume JSON.
+// GET /llm/rewrite/status?job_id=UUID
+func (h *LLMHandler) QueryJob(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Return both rewrites and analysis (if you want both in one response)
-	resp := struct {
-		Rewrites interface{} `json:"rewrites"`
-		Analysis interface{} `json:"analysis"`
-	}{
-		Rewrites: rewrites,
-		Analysis: parsedAnalysis,
+	jobID := r.URL.Query().Get("job_id")
+	if jobID == "" {
+		http.Error(w, "Missing job_id", http.StatusBadRequest)
+		return
 	}
 
-	writeJSON(w, resp)
+	// Short DB timeout so this endpoint stays snappy
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	// If you store plaintext JSONB in result_json and optionally ciphertext in result_json_enc
+	// Select both. Prefer decrypting enc if present. Fall back to plain JSON.
+	var (
+		status  string
+		encJSON []byte // from BYTEA
+		errMsg  sql.NullString
+	)
+
+	err := h.DB.QueryRowContext(ctx, `
+		SELECT status,
+		       COALESCE(result_json_enc, ''::bytea)  AS result_json_enc,
+		       error_message
+		FROM resume_jobs
+		WHERE job_id = $1
+	`, jobID).Scan(&status, &encJSON, &errMsg)
+	if err == sql.ErrNoRows {
+		http.Error(w, "Job not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Database error"+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Decrypt if encrypted payload exists
+	var payload []byte
+	if len(encJSON) > 0 {
+		key := []byte(os.Getenv("RESUME_JSON_KEY")) // 32 bytes for AES-256
+		pt, decErr := decryptAESGCM(key, encJSON)
+		if decErr != nil {
+			http.Error(w, "Failed to decrypt result", http.StatusInternalServerError)
+			return
+		}
+		payload = pt
+	}
+
+	// For non completed states do not return rewrites
+	type resp struct {
+		Status   string          `json:"status"`
+		Rewrites json.RawMessage `json:"rewrites"`        // null if not ready
+		Error    *string         `json:"error,omitempty"` // present if failed
+	}
+
+	out := resp{Status: status, Rewrites: nil}
+	if errMsg.Valid && errMsg.String != "" {
+		out.Error = &errMsg.String
+	}
+
+	if status == "completed" && len(payload) > 0 && json.Valid(payload) {
+		out.Rewrites = json.RawMessage(payload)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	// You can return 200 for all statuses. If you prefer semantics, you can do 202 when processing.
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(out)
+}
+
+// saveJobResult stores the successful rewrite + analysis in your DB or cache.
+func (h *LLMHandler) saveJobResult(jobID string, rewrites interface{}) error {
+	data, err := json.Marshal(struct {
+		Rewrites interface{} `json:"rewrites"`
+	}{
+		Rewrites: rewrites,
+	})
+	if err != nil {
+		return err
+	}
+
+	key := []byte(os.Getenv("RESUME_JSON_KEY")) // 32 bytes from a secret manager
+	if len(key) != 32 {
+		return fmt.Errorf("bad key length")
+	}
+	ciphertext, err := encryptAESGCM(key, data)
+	if err != nil {
+		return err
+	}
+
+	_, err = h.DB.Exec(`
+  INSERT INTO resume_jobs (job_id, status, result_json_enc)
+  VALUES ($1, $2, $3)
+  ON CONFLICT (job_id) DO UPDATE
+  SET status = EXCLUDED.status,
+      result_json_enc = EXCLUDED.result_json_enc
+`, jobID, "completed", ciphertext)
+
+	return err
+}
+
+// saveJobError stores an error message for a job in your DB or cache.
+func (h *LLMHandler) saveJobError(jobID string, err error) {
+	log.Println("Save job failed.")
+	// Example using a database (pseudo-code)
+	h.DB.Exec(`INSERT INTO resume_jobs (job_id, status, error_message) VALUES ($1, $2, $3) 
+	         ON CONFLICT(job_id) DO UPDATE SET status = $4, error_message = $5`,
+		jobID, "failed", err.Error(), "failed", err.Error())
 }
 
 func (h *LLMHandler) CoverLetterHandler(w http.ResponseWriter, r *http.Request) {

@@ -101,7 +101,6 @@ def extract_with_ner(text):
         seen.add(word)
         if is_valid_skill(word) and ent['group'] in ("TECHNICAL", "TECHNOLOGY"):
             useful.append(word)
-
     return useful
 
 def extract_soft_skills(text, main_threshold, secondary_threshold):
@@ -287,6 +286,8 @@ def score_resume_vs_job(resume_text, job_description):
     job_results = np.array([[float(round(avg_score * 100, 2)), skill_avg_sim, float(round(max_score * 100, 2))]])
     predicted_score = float(scoring_model.predict(job_results)[0])
 
+    print(weighted_score, max_score, skill_avg_sim)
+
     return {
         "average_similarity": float(round(avg_score * 100, 2)),
         "max_similarity": float(round(max_score * 100, 2)),
@@ -314,7 +315,7 @@ def rank_resumes():
     job_description = request.form.get('job_description', '')
     if not isinstance(job_description, str):
         return jsonify({'error': 'Job description must be a string'}), 400
-    if len(job_description) > 5000:
+    if len(job_description) > 10000:
         return jsonify({'error': 'Job description is too long'}), 400
 
     pdf_file = BytesIO(file.stream.read())

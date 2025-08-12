@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"trackify-jobs/config"
 	"trackify-jobs/database"
@@ -73,7 +74,7 @@ func main() {
 	documentService := services.NewDocumentService(db, cfg.MainFolder)
 	documentHandler := handlers.NewDocumentHandler(documentService)
 	nlpService := services.NewNLPService(20)
-	suggestionsHandler := handlers.NewLLMHandler(llmService, nlpService)
+	suggestionsHandler := handlers.NewLLMHandler(llmService, nlpService, db)
 
 	stripeService := services.NewStripeService(db)
 	stripeHandler := handlers.NewStripeHandler(authClient, stripeService, db, firebaseApp)
@@ -136,6 +137,7 @@ func main() {
 	pro.HandleFunc("/llm/recommendations", suggestionsHandler.RecommendationsHandler).Methods("POST")
 	pro.HandleFunc("/llm/rewrite", suggestionsHandler.ResumeRewriteHandler).Methods("POST")
 	pro.HandleFunc("/llm/cover-letter", suggestionsHandler.CoverLetterHandler).Methods("POST")
+	pro.HandleFunc("/llm/query-job", suggestionsHandler.QueryJob).Methods("GET")
 
 	// Apply CORS middleware
 	http.Handle("/", middleware.CORSMiddleware(router))
@@ -146,9 +148,17 @@ func main() {
 	log.Println(" ")
 	PrintRoutes(pro, "Pro Subscription")
 
+	srv := &http.Server{
+		Addr:         ":" + cfg.Port,
+		Handler:      middleware.LoggingMiddleware(router),
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 120 * time.Second, // max time to write response
+		IdleTimeout:  60 * time.Second,
+	}
+
 	// Start server
 	log.Printf("Server listening on port %s", cfg.Port)
-	log.Fatal(http.ListenAndServe(":"+cfg.Port, middleware.LoggingMiddleware(router)))
+	log.Fatal(srv.ListenAndServe())
 }
 
 func NotImplemented(w http.ResponseWriter, r *http.Request) {

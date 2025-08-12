@@ -259,11 +259,10 @@ async function getWorkExperience(SECTIONS, page) {
       [hasYear, 1],
     ]);
     let company = getBestItem(subsection, [
-      [hasMoreThanFiveWords, -10],
       [hasLettersOrSpace, 10],
-      [hasText(date[0].str), -5],
+      [hasText(date[0].str), -10],
       [hasText(job[0].str), -10],
-      [hasMonth, -5],
+      [hasMonth, -10],
     ]);
     let bullets = extractBulletPoints(subsection);
 
@@ -617,13 +616,11 @@ export async function parseResumeData(pdfDocument) {
     .map((item) => item.str)
     .join(' ');
 
-  const SKILLS = (FOUND_SECTIONS.skills?.flat() || [])
-    .map((item) => item.str)
-    .join(' ');
+  const SKILLS = (FOUND_SECTIONS.skills?.flat() || []).map((item) => item.str);
   const PROFILE = extractProfileData(FOUND_SECTIONS['profile']);
-  const EDUCATION = (FOUND_SECTIONS.education?.flat() || [])
-    .map((item) => item.str)
-    .join(' ');
+  const EDUCATION = (FOUND_SECTIONS.education?.flat() || []).map(
+    (item) => item.str
+  );
 
   return {
     workExperience: WORK_EXPERIENCE,

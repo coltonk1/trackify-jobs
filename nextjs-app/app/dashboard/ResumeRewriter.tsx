@@ -31,25 +31,63 @@ export default function ResumeRewriter({
       if (!user) throw new Error('User not authenticated');
       const token = await user.getIdToken();
 
+      // Step 1: Submit the job
       const formData = new FormData();
-      formData.append('resume_file', file); // this is the raw File object
-      formData.append('resume_text', resumeText); // extracted text
-      formData.append('job_description', jobDescription); // string
+      formData.append('resume_file', file);
+      formData.append('resume_text', resumeText);
+      formData.append('job_description', jobDescription);
 
-      const res = await fetch('/api/llm/rewrite', {
+      const submitRes = await fetch('/api/llm/rewrite', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
 
-      if (!res.ok) throw new Error(await res.text());
+      if (!submitRes.ok) throw new Error(await submitRes.text());
+      const { job_id } = await submitRes.json();
+      if (!job_id) throw new Error('No job_id returned');
 
-      const data = await res.json();
-      console.log(data);
-      const resumeData = data.rewrites;
-      const query = compressToEncodedURIComponent(JSON.stringify(resumeData));
+      // Step 2: Poll the job status
+      const pollInterval = 10000; // 10s
+      let attempts = 0;
+      let maxAttempts = 30; // ~3 minutes
+
+      let resultData = null;
+      while (attempts < maxAttempts) {
+        const statusRes = await fetch(
+          `/api/llm/query-job?job_id=${encodeURIComponent(job_id)}`,
+          {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        if (!statusRes.ok) {
+          let statusText = await statusRes.text();
+          console.log(statusText);
+          await new Promise((res) => setTimeout(res, pollInterval));
+          attempts++;
+          continue;
+        }
+        const statusData = await statusRes.json();
+
+        if (statusData.status === 'completed' && statusData.rewrites) {
+          resultData = statusData.rewrites;
+          break;
+        }
+
+        if (statusData.status === 'failed') {
+          throw new Error(statusData.error || 'Resume rewrite failed');
+        }
+
+        await new Promise((res) => setTimeout(res, pollInterval));
+        attempts++;
+      }
+
+      if (!resultData) throw new Error('Timed out waiting for rewrite job');
+
+      // Step 3: Open resume editor
+      const query = compressToEncodedURIComponent(JSON.stringify(resultData));
       window.open(`/create-resume?custom_resume=${query}`, '_blank');
     } catch (err: any) {
       setError(err.message || 'Failed to rewrite resume');
@@ -71,78 +109,22 @@ export default function ResumeRewriter({
   //   };
 
   return (
-    <div className="p-4 border rounded shadow bg-white mt-4">
+    <div className="mt-4 flex items-center justify-between gap-2 mb-3">
       <button
         onClick={fetchRewritten}
         disabled={loading}
-        className="mb-4 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+        className="px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 disabled:opacity-50 cursor-pointer flex gap-2 items-center"
       >
-        {loading ? 'Rewriting...' : 'Rewrite Resume'}
+        {loading ? 'Rewriting…' : 'Rewrite Resume'}
+        <img
+          src={
+            'https://media.nngroup.com/media/editor/2024/09/16/lyft_promotions_sparkles_icon.png'
+          }
+          alt="Uploaded resume preview"
+          className="rounded aspect-square h-4 brightness-1000"
+        />
       </button>
-
-      {error && <p className="text-red-500 mb-3">{error}</p>}
-
-      {/* {resume && (
-        <div>
-          <h2 className="text-lg font-semibold mb-4">Rewritten Resume</h2>
-
-          {['experience', 'projects', 'customSections'].map((section) => {
-            const entries = (resume as any)[section];
-            if (!entries?.length) return null;
-
-            return (
-              <div key={section} className="mb-6">
-                <h3 className="text-md font-bold capitalize mb-2">{section}</h3>
-                {entries.map((entry: any, idx: number) => (
-                  <div
-                    key={idx}
-                    className="mb-4 pl-4 border-l-2 border-gray-300"
-                  >
-                    <div className="text-sm text-gray-700 mb-1 font-medium">
-                      {entry.title || entry.name} @{' '}
-                      {entry.company || entry.date}
-                    </div>
-                    {entry.bullets.map((bullet: string, i: number) => (
-                      <textarea
-                        key={i}
-                        className="w-full border p-2 rounded text-sm mb-2"
-                        value={bullet}
-                        onChange={(e) =>
-                          updateBullet(section as any, idx, i, e.target.value)
-                        }
-                      />
-                    ))}
-                  </div>
-                ))}
-              </div>
-            );
-          })} */}
-
-      {/* <button
-            onClick={() => {
-              const blob = new Blob([JSON.stringify(resume, null, 2)], {
-                type: 'application/json',
-              });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = 'rewritten-resume.json';
-              a.click();
-              URL.revokeObjectURL(url);
-            }}
-            className="mt-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-          >
-            Download as JSON
-          </button> */}
-
-      {/* <div className="mt-6">
-            <h3 className="text-md font-bold mb-2">Raw JSON Preview</h3>
-            <pre className="text-xs bg-gray-100 p-2 rounded max-h-96 overflow-auto">
-              {JSON.stringify(resume, null, 2)}
-            </pre>
-          </div>
-        </div> */}
-      {/* )} */}
+      {error && <p className="text-red-500 text-sm">{error}</p>}
     </div>
   );
 }
