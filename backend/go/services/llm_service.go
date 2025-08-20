@@ -134,6 +134,8 @@ You must:
 - Use **exact job description phrasing** when integrating them.  
 - Favor technical nouns and strong verbs (e.g., “Built RESTful APIs with Express.js” instead of “Developed backend”).  
 - Do not fabricate experience with skills that cannot be plausibly supported.
+- Ensure dates are all in the same format. Ex, Month Year - Month Year. If a project / experience only has one month year, modify it to be in the same format by adding 1 month to the start date, as the end date.
+- If a job entry lists the company as “Freelance” or similar (e.g., Contract, Independent Work), rewrite the company name as “Independent Contractor” or “Self-employed,” choosing the one that best fits the context. Ensure the job title, company name, location, and dates are on the same line for ATS readability.
 
 ---
 
@@ -146,6 +148,7 @@ You must:
 - Max 20 skills, grouped into **no more than 4 categories**.  
 - Categories should be relevant to the role.  
 - Skills must be comma-separated within each category.
+- Group skills into no more than 4 conventional resume skill category titles that are common across professional resumes (examples: Technical Skills, Tools & Software, Certifications & Training, Soft Skills). Use only widely accepted category names and avoid creative or niche headings.
 
 ### Experience & Projects
 - Total combined bullets ≤ 25 across all roles and projects.  

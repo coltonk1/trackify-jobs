@@ -2,7 +2,7 @@ module trackify-jobs
 
 go 1.23
 
-toolchain go1.23.4
+toolchain go1.24.6
 
 require (
 	github.com/gorilla/mux v1.8.1
@@ -41,16 +41,13 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect
 	github.com/googleapis/gax-go/v2 v2.14.1 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
-	github.com/sashabaranov/go-openai v1.40.3 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
-	github.com/stripe/stripe-go/v82 v82.2.1 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.29.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.54.0 // indirect
@@ -79,5 +76,8 @@ require (
 
 require (
 	firebase.google.com/go/v4 v4.15.2
+	github.com/google/uuid v1.6.0
+	github.com/sashabaranov/go-openai v1.40.3
 	github.com/stripe/stripe-go/v76 v76.25.0
+	github.com/stripe/stripe-go/v82 v82.2.1
 )

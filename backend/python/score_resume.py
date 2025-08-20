@@ -1,220 +1,51 @@
+from datetime import datetime
 import math
-from time import sleep
+from time import time
 from flask import Flask, request, jsonify
 import re
 from io import BytesIO
-import nltk
 import numpy as np
 import pdfplumber
 from sentence_transformers import SentenceTransformer, util
 import torch
-from transformers import pipeline
-import textwrap
-nltk.download("punkt")
-from nltk.tokenize import sent_tokenize
+import os
+import pandas as pd
+import spacy
+from spacy.matcher import PhraseMatcher
+from skillNer.general_params import SKILL_DB
+from skillNer.skill_extractor_class import SkillExtractor
 import xgboost as xgb
 
-# nlp = spacy.load("en_core_web_sm")
-# ner = pipeline("ner", model="algiraldohe/lm-ner-linkedin-skills-recognition", aggregation_strategy="simple")
-ner = pipeline("ner", model="GalalEwida/lm-ner-skills-recognition", aggregation_strategy="simple")
+# --- Setup NLP + SkillNer ---
+nlp = spacy.load("en_core_web_lg")
+skill_extractor = SkillExtractor(nlp, SKILL_DB, PhraseMatcher)
+
+device = torch.device("cpu")
+model = SentenceTransformer('all-MiniLM-L6-v2', device=device)
+
+# --- Load trained XGB regression model ---
+script_dir = os.path.dirname(os.path.abspath(__file__))
+scoring_model = xgb.XGBRegressor(tree_method="hist", device="cpu", n_jobs=1)
+scoring_model.load_model(script_dir + "/xgboost_resume_match_model_v2.json")
 
 app = Flask(__name__)
 
-model = SentenceTransformer('all-MiniLM-L6-v2')
+# ------------------ UTILITIES ------------------
 
-scoring_model = xgb.XGBRegressor()
-scoring_model.load_model("xgboost_resume_match_model.json")
-
-def clean_text(text):
-    text = text.lower()
-    text = re.sub(r'\n+', ' ', text)                  # remove line breaks
-    text = re.sub(r'[^A-Za-z0-9+.#/:-]+', ' ', text)  # remove extra punctuation
-    text = re.sub(r'\s+', ' ', text)                  # collapse whitespace
-    return text.strip()
-
-def is_valid_skill(word):
-    if len(word.split(" ")) > 3:
-        return False
-    if word.lower() in {"and", "or", "with", "for", "to", "the", "a"}:
-        return False
-    if re.fullmatch(r"[^\w]+", word):  # symbols only
-        return False
-    if word.startswith("##"):
-        return False
-    if re.search(r"\d", word):  # numbers in "skills" = probably phone number, dates
-        return False
-    return True
-
-def extract_keyphrases_from_tokens(token_outputs):
-    phrases = []
-    current_phrase = []
-    
-    for token in token_outputs:
-        label = token['entity']
-        word = token['word']
-        
-        # Clean up wordpiece token (remove special prefix like 'Ġ')
-        clean_word = word.lstrip('Ġ')
-
-        if label == 'B-KEY':
-            # Start of a new phrase
-            if current_phrase:
-                phrases.append(' '.join(current_phrase))
-                current_phrase = []
-            current_phrase.append(clean_word)
-
-        elif label == 'I-KEY':
-            if current_phrase:
-                current_phrase.append(clean_word)
-            else:
-                # Rare case: I-KEY without B-KEY before it
-                current_phrase = [clean_word]
-
-    if current_phrase:
-        phrases.append(' '.join(current_phrase))
-
-    # Deduplicate and lowercase
-    clean_phrases = list({p.lower() for p in phrases if len(p.strip()) > 1})
-    return sorted(clean_phrases)
-
-def extract_with_ner(text):
-    text = clean_text(text)  # still sanitize the input
-    raw_entities = []
-
-    try:
-        doc = ner(text)
-        raw_entities.extend([
-            {"group": ent['entity_group'], "word": ent['word']}
-            for ent in doc
-        ])
-    except Exception as e:
-        print(f"NER failed: {e}")
-        return []
-    
-    seen = set()
-    useful = []
-    for ent in raw_entities:
-        word = ent['word'].strip().lower()
-        word = word.replace('. ', '.').replace(' .', '.')
-        if word in seen:
-            continue
-        seen.add(word)
-        if is_valid_skill(word) and ent['group'] in ("TECHNICAL", "TECHNOLOGY"):
-            useful.append(word)
-    return useful
-
-def extract_soft_skills(text, main_threshold, secondary_threshold):
-    text = clean_text(text)
-
-    soft_skills = [
-        # Communication
-        "verbal communication",
-        "written communication",
-        "active listening",
-
-        # Team Collaboration
-        "teamwork",
-        "interpersonal skills",
-        "collaboration",
-
-        # Leadership & Influence
-        "leadership",
-        "delegation",
-        "mentoring",
-        "influencing others",
-
-        # Decision & Judgment
-        "critical thinking",
-        "analytical thinking",
-        "problem solving",
-        "decision making",
-        "strategic thinking",
-
-        # Work Ethic & Ownership
-        "initiative",
-        "ownership",
-        "accountability",
-        "dependability",
-        "integrity",
-        "work ethic",
-
-        # Adaptability & Self-Management
-        "adaptability",
-        "flexibility",
-        "resilience",
-        "stress tolerance",
-        "handling ambiguity",
-
-        # Personal Development
-        "curiosity",
-        "growth mindset",
-        "willingness to learn",
-        "learning agility",
-
-        # Productivity & Focus
-        "time management",
-        "prioritization",
-        "attention to detail",
-        "goal setting",
-
-        # Creativity
-        "creativity",
-        "innovation",
-        "resourcefulness",
-
-        # Emotional & Social Intelligence
-        "emotional intelligence",
-        "conflict resolution",
-        "empathy",
-
-        # Inclusion & Culture
-        "cultural sensitivity",
-        "inclusion",
-        "ethical judgment"
-    ]
-
-    soft_skill_embeddings = model.encode(soft_skills, convert_to_tensor=True)
-    parts = re.split(r'[\n\r•\-–—.?!]+', text)
-    phrases = [p.strip() for p in parts if len(p.strip()) > 6]
-
-    scored_skills = {}
-
-    if phrases:
-        scores = util.cos_sim(model.encode(phrases, convert_to_tensor=True), soft_skill_embeddings)
-        for row in scores:
-            for skill, score in zip(soft_skills, row):
-                s = score.item()
-                if s >= secondary_threshold:
-                    scored_skills[skill] = max(s, scored_skills.get(skill, 0))
-
-    # Primary: For resumes make it 0.5, 0.3 for job descriptions
-    main = [{"item": s, "score": round(v,2)} for s, v in scored_skills.items() if v >= main_threshold]
-    # Seconday: Resumes - 0.35 <= score < 0.50, Job Descriptions - 0.20 <= score < 0.30
-    secondary = [{"item": s, "score": round(v,2)} for s, v in scored_skills.items() if secondary_threshold <= v < main_threshold]
-
-    return {
-        "primary": main,
-        "secondary": secondary
-    }
+def clean_text(text: str) -> str:
+    text = text.replace("\n", " ").lower()
+    return re.sub(r"\s+", " ", text).strip()
 
 def extract_phrases(text):
     lines = re.split(r'[\n.;•\-]+', text)
     return [line.strip() for line in lines if len(line.strip()) > 4]
 
 def embed_phrases(phrases):
-    embeddings = model.encode(phrases, convert_to_tensor=True, normalize_embeddings=True)
-    return embeddings
+    return model.encode(phrases, convert_to_tensor=True, normalize_embeddings=True)
 
 def nonlinear_boost(x):
-    print(x)
     raw = 1 / (1 + math.exp(-14 * (x - 0.65)))
     return 0.2 + 0.8 * raw
-    # y = 1 / (1 + math.exp(-12 * (x - 0.6)))
-    # return y
-    # x = 1 / (1 + math.exp(-((100 * x / 9) - 4.5))) - .01
-    # if x < 0.6:
-    #     return x ** 1.3
-    # return x ** 0.8
 
 def extract_text_from_pdf(pdf_file):
     try:
@@ -227,85 +58,140 @@ def extract_text_from_pdf(pdf_file):
         print(f"Error reading PDF: {e}")
         return None
 
-def score_resume_vs_job(resume_text, job_description):
-    resume_text += " communication, teamwork, leadership, adaptability, problem-solving, critical thinking, time management, creativity, emotional intelligence, conflict resolution, decision making, attention to detail, collaboration, resilience, empathy, work ethic, flexibility, active listening, accountability, interpersonal skills"
-    resume_chunks = extract_phrases(resume_text) 
-    job_chunks = extract_phrases(job_description)
+# ------------------ SKILL EXTRACTION ------------------
 
+def extract_with_skillner(text):
+    annotations = skill_extractor.annotate(text)
+    extracted = []
+    for section in ["full_matches", "ngram_scored"]:
+        for match in annotations["results"].get(section, []):
+            skill_id = match["skill_id"]
+            if skill_id in SKILL_DB:
+                entry = SKILL_DB[skill_id]
+                extracted.append({
+                    "skill_id": skill_id,
+                    "name": entry["skill_name"].lower(),
+                    "type": entry["skill_type"]  # hard, soft, certification
+                })
+    return extracted
+
+def split_skills(skills):
+    hard = [s for s in skills if s["type"] == "Hard Skill"]
+    soft = [s for s in skills if s["type"] == "Soft Skill"]
+    certs = [s for s in skills if s["type"] == "Certification"]
+    return hard, soft, certs
+
+# ------------------ SCORING ------------------
+
+def compute_skill_similarity(job_skills, resume_skills):
+    """Return avg similarity and matched pairs between two skill sets."""
+    if not job_skills or not resume_skills:
+        return 0.0, 0.0, []
+
+    job_names = [s["name"] for s in job_skills]
+    resume_names = [s["name"] for s in resume_skills]
+
+    emb_resume_skills = embed_phrases(resume_names)
+    emb_job_skills = embed_phrases(job_names)
+
+    skill_sim_matrix = util.cos_sim(emb_job_skills, emb_resume_skills)
+    skill_top_similarities = skill_sim_matrix.max(dim=1).values.cpu().numpy()
+
+    avg_sim = float(round(np.mean(skill_top_similarities) * 100, 2))
+    max_sim = float(round(np.max(skill_top_similarities) * 100, 2))
+
+    matched = []
+    for i, job_skill in enumerate(job_names):
+        j = torch.argmax(skill_sim_matrix[i]).item()
+        matched.append({
+            "job_skill": job_skills[i],
+            "closest_resume_skill": resume_skills[j],
+            "similarity": float(round(skill_sim_matrix[i][j].item() * 100, 2))
+        })
+
+    return avg_sim, max_sim, matched
+
+def score_resume_vs_job(resume_text, job_description):
+    resume_text = clean_text(resume_text)
+    job_description = clean_text(job_description)
+
+    # Phrase-level similarity
+    resume_chunks = extract_phrases(resume_text)
+    job_chunks = extract_phrases(job_description)
     if not resume_chunks or not job_chunks:
         return {"similarity": 0.0, "reason": "Empty input"}
 
     emb_resume = embed_phrases(resume_chunks)
     emb_job = embed_phrases(job_chunks)
 
-    sim_matrix = util.cos_sim(emb_job, emb_resume)  # [job_phrases x resume_phrases]
+    sim_matrix = util.cos_sim(emb_job, emb_resume)
     top_similarities = sim_matrix.max(dim=1).values.cpu().numpy()
-
     avg_score = np.mean(top_similarities)
     max_score = np.max(top_similarities)
 
-    resume_skills = extract_with_ner(resume_text)
-    job_skills = extract_with_ner(job_description)
+    # SkillNer extraction
+    resume_skills = extract_with_skillner(resume_text)
+    job_skills = extract_with_skillner(job_description)
 
-    # Skill-level similarity scoring
-    if resume_skills and job_skills:
-        emb_resume_skills = embed_phrases(resume_skills)
-        emb_job_skills = embed_phrases(job_skills)
-        skill_sim_matrix = util.cos_sim(emb_job_skills, emb_resume_skills)
-        skill_top_similarities = skill_sim_matrix.max(dim=1).values.cpu().numpy()
-        skill_avg_sim = float(round(np.mean(skill_top_similarities) * 100, 2))
-        skill_max_sim = float(round(np.max(skill_top_similarities) * 100, 2))
+    # Split skills by type
+    resume_hard, resume_soft, resume_certs = split_skills(resume_skills)
+    job_hard, job_soft, job_certs = split_skills(job_skills)
 
-        matched_skills = []
-        for i, job_skill in enumerate(job_skills):
-            j = torch.argmax(skill_sim_matrix[i]).item()
-            matched_skills.append({
-                "job_skill": job_skill,
-                "closest_resume_skill": resume_skills[j],
-                "similarity": float(round(skill_sim_matrix[i][j].item() * 100, 2))
-            })
-    else:
-        skill_avg_sim = 0.0
-        skill_max_sim = 0.0
-        matched_skills = []
+    # Compute similarities
+    hard_avg_sim, hard_max_sim, hard_matches = compute_skill_similarity(job_hard, resume_hard)
+    soft_avg_sim, soft_max_sim, soft_matches = compute_skill_similarity(job_soft, resume_soft)
+    cert_avg_sim, cert_max_sim, cert_matches = compute_skill_similarity(job_certs, resume_certs)
 
-    job_soft = extract_soft_skills(job_description, 0.35, 0.3)
-    resume_soft = extract_soft_skills(resume_text, 0.45, 0.37)
-
-    weighted_score = max_score * .55 + (skill_avg_sim / 100) * .45
-
+    # Weighted score: balance semantic & skills
+    weighted_score = max_score * 0.5 + (hard_avg_sim / 100) * 0.3 + (soft_avg_sim / 100) * 0.2
     final_score = nonlinear_boost(weighted_score)
+
     if final_score < avg_score:
         final_score = avg_score
     elif final_score > max_score * 1.2:
         final_score = max_score * 1.2
-
     if final_score > max_score:
         final_score = max_score
 
-    job_results = np.array([[float(round(avg_score * 100, 2)), skill_avg_sim, float(round(max_score * 100, 2))]])
+    # Regression model score
+    job_results = np.array([[float(round(avg_score * 100, 2)),
+                             hard_avg_sim,
+                             float(round(max_score * 100, 2))]])
     predicted_score = float(scoring_model.predict(job_results)[0])
-
-    print(weighted_score, max_score, skill_avg_sim)
 
     return {
         "average_similarity": float(round(avg_score * 100, 2)),
         "max_similarity": float(round(max_score * 100, 2)),
         "similarity": float(round(final_score * 100, 2)),
-        "job_chunks_evaluated": len(job_chunks),
-        "resume_skills": resume_skills,
-        "job_skills": job_skills,
-        "average_skill_similarity": skill_avg_sim,
-        "max_skill_similarity": skill_max_sim,
-        "matched_skills": matched_skills,
+
+        "resume_hard_skills": resume_hard,
         "resume_soft_skills": resume_soft,
+        "resume_certifications": resume_certs,
+        "job_hard_skills": job_hard,
         "job_soft_skills": job_soft,
+        "job_certifications": job_certs,
+
+        "average_hard_skill_similarity": hard_avg_sim,
+        "max_hard_skill_similarity": hard_max_sim,
+        "matched_hard_skills": hard_matches,
+
+        "average_soft_skill_similarity": soft_avg_sim,
+        "max_soft_skill_similarity": soft_max_sim,
+        "matched_soft_skills": soft_matches,
+
+        "average_certification_similarity": cert_avg_sim,
+        "max_certification_similarity": cert_max_sim,
+        "matched_certifications": cert_matches,
+
         "ai_score": predicted_score
     }
 
+# ------------------ API ------------------
 
 @app.route('/rank-resumes', methods=['POST'])
 def rank_resumes():
+    start_time = datetime.now()
+
     file = request.files['file']
     if not file.filename.endswith('.pdf'):
         return jsonify({'error': 'Only PDF files are allowed'}), 400
@@ -324,7 +210,11 @@ def rank_resumes():
         return jsonify({'error': 'Failed to extract text from PDF'}), 400
 
     result = score_resume_vs_job(resume_text, job_description)
+
+    elapsed = (datetime.now() - start_time).total_seconds() * 1000
+    print(f"/rank-resumes took {elapsed:.2f} ms", flush=True)
+
     return jsonify(result)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()

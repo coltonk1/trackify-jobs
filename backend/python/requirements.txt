@@ -1,7 +1,18 @@
+--index-url https://download.pytorch.org/whl/rocm6.4
+--extra-index-url https://pypi.org/simple
+
 flask
 flask_limiter
+pandas
 torch
 transformers
 pdfplumber
 clamd
 gunicorn
+nltk
+sentence_transformers
+xgboost
+skillNer
+spacy
+ipython
+https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.7.1/en_core_web_lg-3.7.1-py3-none-any.whl

@@ -248,6 +248,7 @@ export default function ResumeBuilder() {
         const decoded = decompressFromEncodedURIComponent(raw);
         const parsed = JSON.parse(decoded);
         console.log(parsed);
+        console.log(parsed.rewrites)
         setForm(parsed.rewrites);
       } catch (err) {
         console.error('Invalid custom_resume JSON:', err);

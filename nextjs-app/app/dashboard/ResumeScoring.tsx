@@ -188,6 +188,7 @@ const ResumeScoring: ForwardRefRenderFunction<ResumeScoringHandle, Props> = (
       if (!res.ok) throw new Error((await res.text()) || 'Server error');
 
       const data = await res.json();
+      console.log(data)
       setScoreData(data as ScoreData);
     } catch (err: any) {
       setError(err.message || 'Something went wrong');
