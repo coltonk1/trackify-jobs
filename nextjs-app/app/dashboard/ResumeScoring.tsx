@@ -200,17 +200,41 @@ const ResumeScoring: ForwardRefRenderFunction<ResumeScoringHandle, Props> = (
 
   useImperativeHandle(ref, () => ({ triggerScoring: handleSubmit }));
 
+function countSkills(skills) {
+  return Object.values(
+    skills.reduce((acc, s) => {
+      const name = typeof s === "string" ? s : s.name;
+      if (!acc[name]) {
+        acc[name] = { name, count: 0 };
+      }
+      acc[name].count += 1;
+      return acc;
+    }, {})
+  ).sort((a, b) => {
+    if (b.count === a.count) {
+      return a.name.localeCompare(b.name); // alphabetical if counts are equal
+    }
+    return b.count - a.count; // higher count first
+  });
+}
+
+
   const scores = [
-    scoreData?.average_skill_similarity ?? 0,
-    scoreData?.similarity ?? 0,
-    scoreData?.ai_score ?? 0,
+      scoreData?.average_hard_skill_similarity ?? 0,
+      scoreData?.max_similarity ?? 0,
+      scoreData?.ai_score ?? 0,
   ];
 
   const score = scores.sort((a, b) => a - b)[1];
 
   // Color from red to green based on score
-  const hue = clamp((score / 100) * 120); // 0 red to 120 green
+
+  function getColorOfScore(score) {
+      const hue = clamp((score / 100) * 120); // 0 red to 120 green
   const scoreColor = `hsl(${Math.round(hue)}, 80%, 40%)`;
+  return scoreColor
+  }
+
 
   return (
     <Section
@@ -241,12 +265,12 @@ const ResumeScoring: ForwardRefRenderFunction<ResumeScoringHandle, Props> = (
                   className="absolute left-0 top-0 h-3 rounded"
                   style={{
                     width: `${clamp(score)}%`,
-                    backgroundColor: scoreColor,
+                    backgroundColor: getColorOfScore(score),
                   }}
                 />
                 {[
-                  scoreData?.average_skill_similarity,
-                  scoreData?.similarity,
+                  scoreData?.average_hard_skill_similarity,
+                  scoreData?.max_similarity,
                   scoreData?.ai_score,
                 ]
                   .filter((value) => clamp(value ?? 0) !== clamp(score))
@@ -256,9 +280,9 @@ const ResumeScoring: ForwardRefRenderFunction<ResumeScoringHandle, Props> = (
                       key={idx}
                       className="absolute top-0 h-3 w-0.5 bg-black/50"
                       style={{ left: `${value}%` }}
-                      title={`${
-                        ['Avg Skill Match', 'Similarity', 'AI Score'][idx]
-                      }: ${value.toFixed(1)}%`}
+                      // title={`${
+                      //   ['Avg Hard Skill Match', 'Similarity', 'AI Score'][idx]
+                      // }: ${value.toFixed(1)}%`}
                     />
                   ))}
               </div>
@@ -271,14 +295,8 @@ const ResumeScoring: ForwardRefRenderFunction<ResumeScoringHandle, Props> = (
               <div className="flex flex-wrap gap-4 text-sm">
                 <div>
                   <span className="text-gray-600">Overall Match</span>{' '}
-                  <span className="font-semibold" style={{ color: scoreColor }}>
+                  <span className="font-semibold" style={{ color: getColorOfScore(score) }}>
                     {clamp(score).toFixed(1)}%
-                  </span>
-                </div>
-                <div className="text-gray-600">
-                  Chunks evaluated.{' '}
-                  <span className="font-semibold text-gray-800">
-                    {scoreData.job_chunks_evaluated}
                   </span>
                 </div>
               </div>
@@ -305,25 +323,24 @@ const ResumeScoring: ForwardRefRenderFunction<ResumeScoringHandle, Props> = (
           </Panel>
 
           <Panel title="Matched Skills" tone="default">
-            {scoreData.matched_skills && scoreData.matched_skills.length > 0 ? (
+            {scoreData.matched_hard_skills && scoreData.matched_hard_skills.length > 0 ? (
               <div className="flex flex-wrap gap-2">
-                {[...scoreData.matched_skills]
+                {[...scoreData.matched_hard_skills]
                   .sort((a, b) => pct(b.similarity) - pct(a.similarity))
                   .map(({ job_skill, closest_resume_skill, similarity }, i) => {
                     const s = clamp(pct(similarity));
-                    const hue = Math.round((s / 100) * 210);
-                    const color = `hsl(${hue}, 80%, 40%)`;
+                    const color = `${getColorOfScore(s)}`;
                     return (
                       <span
                         key={`matched-${i}`}
                         className="inline-flex items-center gap-1 bg-white border border-gray-200 rounded px-2 py-0.5 text-xs"
                       >
                         <span className="text-gray-700 font-medium">
-                          {job_skill}
+                          {job_skill.name}
                         </span>
                         <span className="text-gray-500">→</span>
                         <span className="text-gray-600">
-                          {closest_resume_skill}
+                          {closest_resume_skill.name}
                         </span>
                         <span className="font-semibold" style={{ color }}>
                           {s.toFixed(1)}%
@@ -337,48 +354,40 @@ const ResumeScoring: ForwardRefRenderFunction<ResumeScoringHandle, Props> = (
             )}
           </Panel>
 
-          {/* Resume vs Job skills */}
-          <Panel title="Resume Skills" tone="blue">
-            <ChipList items={scoreData.resume_skills} tone="blue" />
+          <Panel title="Resume Skills" tone="purple">
+            <ChipList
+              items={countSkills(scoreData.resume_hard_skills).map(
+                (s) => `${s.name} (${s.count})`
+              )}
+              tone="purple"
+            />
           </Panel>
 
-          <Panel title="Job Description Skills" tone="yellow">
-            <ChipList items={scoreData.job_skills} tone="yellow" />
+          <Panel title="Job Description Skills" tone="purple">
+            <ChipList
+              items={countSkills(scoreData.job_hard_skills).map(
+                (s) => `${s.name} (${s.count})`
+              )}
+              tone="purple"
+            />
           </Panel>
 
-          {/* Soft skills */}
-          <Panel title="Resume Soft Skills" tone="blue">
+          <Panel title="Job Soft Skills" tone="blue">
             <div className="space-y-2">
               <div className="text-sm font-medium text-gray-700">Primary</div>
               <ChipList
-                items={scoreData.resume_soft_skills.primary.map((s) => s.item)}
-                tone="purple"
-              />
-              <div className="text-sm font-medium text-gray-700 mt-2">
-                Secondary
-              </div>
-              <ChipList
-                items={scoreData.resume_soft_skills.secondary.map(
-                  (s) => s.item
-                )}
-                tone="purple"
+                items={countSkills(scoreData.job_soft_skills).map((s) => `${s.name} (${s.count})`)}
+                tone="blue"
               />
             </div>
           </Panel>
 
-          <Panel title="Job Soft Skills" tone="yellow">
+          <Panel title="Job Soft Skills" tone="blue">
             <div className="space-y-2">
               <div className="text-sm font-medium text-gray-700">Primary</div>
               <ChipList
-                items={scoreData.job_soft_skills.primary.map((s) => s.item)}
-                tone="yellow"
-              />
-              <div className="text-sm font-medium text-gray-700 mt-2">
-                Secondary
-              </div>
-              <ChipList
-                items={scoreData.job_soft_skills.secondary.map((s) => s.item)}
-                tone="yellow"
+                items={countSkills(scoreData.job_soft_skills).map((s) => `${s.name} (${s.count})`)}
+                tone="blue"
               />
             </div>
           </Panel>

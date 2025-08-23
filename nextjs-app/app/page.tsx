@@ -3,27 +3,192 @@
 // app/page.tsx
 import Link from 'next/link';
 import Image from 'next/image';
-import heroImage from '@/assets/image.png';
+import heroImage from '@/assets/heroimage.png';
 import Svg1 from '@/assets/heroleft1.svg';
 import Svg2 from '@/assets/heroleft2.svg';
 import SvgM1 from '@/assets/herom1.svg';
 import SvgM2 from '@/assets/herom2.svg';
+import Marquee from 'react-fast-marquee';
+import { CheckCircle, ChevronDown } from 'lucide-react';
+import { useState } from 'react';
 
 export default function LandingPage() {
   return (
     <main className="min-h-screen flex flex-col bg-white text-gray-900">
       <HeroNew />
-      <StatsStrip />
-      <BenefitsCards />
-      <FeatureAlternating />
-      <Timeline />
-
+      <UniversitiesMarquee />
+      {/* <StatsStrip /> */}
+      <FeaturesObjectionSection />
+      <SocialProof />
+      <FAQSection />
+      {/* <BenefitsCards /> */}
+      {/* <Timeline />
       <TestimonialsScroll />
       <PrivacySplit />
       <PricingPreviewNew />
-      <FAQAccordions />
+      <FAQAccordions /> */}
       <FinalCTA />
+      <FoundersNote />
     </main>
+  );
+}
+
+function FAQSection() {
+  const faqs = [
+    {
+      q: 'Why wouldn’t I just use Google Sheets or Notion for free?',
+      a: 'You can, but spreadsheets weren’t built for job hunting. TrackifyJobs gives you resume scoring, follow-up reminders, and one clear dashboard built specifically for landing interviews — without the setup or clutter.',
+    },
+    {
+      q: 'Do I really need another tool to manage my job search?',
+      a: 'Most trackers feel like extra work. TrackifyJobs replaces them by combining resumes, applications, and deadlines into one view. It’s faster than juggling tools and keeps you focused on actually applying.',
+    },
+    {
+      q: 'I don’t have time to keep this updated.',
+      a: 'That’s exactly why TrackifyJobs exists. You can add jobs from links in seconds, auto-categorize applications, and get instant resume feedback. Updating takes less time than opening your spreadsheet.',
+    },
+    {
+      q: 'Does resume scoring even work?',
+      a: 'Yes. TrackifyJobs uses ATS-style keyword checks and formatting analysis to highlight what recruiters actually see. It’s not a guarantee, but it’s a clear edge over sending un-optimized resumes blindly.',
+    },
+    {
+      q: 'What happens when I’m done job hunting?',
+      a: 'Cancel anytime. There are no contracts or lock-ins. Use it while you need it, stop when you don’t — and you’ll always have your data saved to come back to later.',
+    },
+  ];
+
+  const [open, setOpen] = useState<number | null>(null);
+
+  return (
+    <section className="relative py-20 bg-gray-50">
+      <div className="mx-auto max-w-4xl px-6 lg:px-8">
+        <div className="text-center mb-12">
+          <h2 className="text-3xl md:text-4xl font-extrabold text-gray-900">
+            Frequently Asked Questions
+          </h2>
+          <p className="mt-4 text-lg text-gray-600">
+            Real questions job seekers ask — answered honestly.
+          </p>
+        </div>
+
+        <div className="space-y-6">
+          {faqs.map((faq, i) => (
+            <div key={i} className="rounded-xl bg-white border border-gray-200">
+              <button
+                onClick={() => setOpen(open === i ? null : i)}
+                className="w-full flex justify-between items-center text-left px-6 py-4 focus:outline-none cursor-pointer"
+              >
+                <span className="font-semibold text-gray-900">{faq.q}</span>
+                <ChevronDown
+                  className={`w-5 h-5 text-gray-500 transition-transform ${
+                    open === i ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+              {open === i && (
+                <div className="px-6 pb-4 text-gray-700">{faq.a}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SocialProof() {
+  const testimonials = [
+    {
+      quote:
+        'I was drowning in tabs and spreadsheets before this. Now I know exactly where I am in every application.',
+      name: 'CS Student',
+      school: 'University of Georgia',
+    },
+    {
+      quote:
+        'It takes me seconds to add jobs instead of copy-pasting everything. TrackifyJobs saves me hours every week.',
+      name: 'Software Engineering Student',
+      school: 'Georgia Tech',
+    },
+    {
+      quote:
+        'The resume scoring showed me why I wasn’t getting interviews. I fixed it and finally started hearing back.',
+      name: 'Business Analytics Major',
+      school: 'University of Tennessee',
+    },
+  ];
+
+  return (
+    <section className="relative py-20 bg-white">
+      <div className="mx-auto max-w-6xl px-6 lg:px-8">
+        <div className="text-center mb-16">
+          <h2 className="text-3xl md:text-4xl font-extrabold text-gray-900">
+            Students and grads are landing interviews faster
+          </h2>
+          <p className="mt-4 text-lg text-gray-600">
+            Used by students from UGA, Georgia Tech, KSU, UTK, and more —
+            TrackifyJobs helps organize the chaos and turn applications into
+            interviews.
+          </p>
+        </div>
+
+        <div className="grid gap-10 md:grid-cols-3">
+          {testimonials.map((t, i) => (
+            <div
+              key={i}
+              className="bg-gray-50 rounded-2xl border border-gray-300 p-8 flex flex-col"
+            >
+              <p className="text-gray-700 italic mb-6">“{t.quote}”</p>
+              <p className="text-sm font-semibold text-gray-900">
+                {t.name}{' '}
+                <span className="font-normal text-gray-500">• {t.school}</span>
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* =========================
+   UNIVERSITIES • marquee credibility strip
+   ========================= */
+function UniversitiesMarquee() {
+  const schools = [
+    'University of Georgia',
+    'Georgia Tech',
+    'University of Tennessee, Knoxville',
+    'Kennesaw State University',
+  ];
+
+  return (
+    <section className="py-10 bg-white">
+      <div className="max-w-6xl mx-auto px-4 text-gray-500">
+        <p className="text-center text-xs uppercase tracking-wide mb-2">
+          Used by students from
+        </p>
+        <Marquee
+          speed={20}
+          autoFill
+          gradient
+          className="text-sm font-bold py-5 overflow-y-hidden"
+        >
+          <p className="ml-15 px-5 py-1 text-white/90 bg-[#BA0C2F] rounded-4xl shadow-md shadow-black/10">
+            University of Georgia
+          </p>
+          <p className="ml-15 px-5 py-1 text-white/90 bg-[#FF8200] rounded-4xl shadow-md shadow-black/10">
+            University of Tennessee
+          </p>
+          <p className="ml-15 px-5 py-1 text-black/70 bg-[#B3A369] rounded-4xl shadow-md shadow-black/10">
+            Georgia Tech
+          </p>
+          <p className="ml-15 px-5 py-1 text-white/90 bg-[#000000] rounded-4xl shadow-md shadow-black/10">
+            Kennessaw State University
+          </p>
+        </Marquee>
+      </div>
+    </section>
   );
 }
 
@@ -49,57 +214,134 @@ function HeroNew() {
         />
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-20 md:py-28 flex items-center gap-10 text-white z-20 relative">
-        <div className="flex-7">
-          <div className="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full border border-white/30 mb-5 backdrop-blur-sm">
-            <span className="h-2 w-2 rounded-full bg-emerald-400" />
-            Early Access. Free today
-          </div>
-          <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">
-            Organize your job search and move faster
-          </h1>
-          <p className="mt-4 text-lg text-white/90">
-            Build sharper resumes. Draft tailored cover letters. Track every
-            application in one place.
-          </p>
-          <div className="mt-8 flex flex-col sm:flex-row gap-3">
-            <Link
-              href="/app"
-              className="inline-flex items-center justify-center rounded-lg bg-white text-purple-700 font-semibold px-6 py-3 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-            >
-              Start Free
-            </Link>
-            <Link
-              href="/features"
-              className="inline-flex items-center justify-center rounded-lg ring-1 ring-white/40 bg-white/10 text-white font-semibold px-6 py-3 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-            >
-              See Features
-            </Link>
-          </div>
-          <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-xs text-white/85">
-            <li className="flex items-center gap-2">
-              <span className="h-2 w-2 bg-emerald-400 rounded-full" /> No credit
-              card needed
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="h-2 w-2 bg-emerald-400 rounded-full" /> Unlimited
-              access during Early Access
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="h-2 w-2 bg-emerald-400 rounded-full" /> Export or
-              delete data anytime
-            </li>
-          </ul>
-        </div>
+      <div className="mx-auto pl-30 md:py-15 flex items-center gap-30 justify-around text-white z-20 relative">
+        <div className="w-full flex-1">
+          <div className="w-full max-w-3xl">
+            <div className="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full border border-white/30 mb-5 backdrop-blur-sm">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+              Early Access. Free today
+            </div>
+            <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">
+              The all-in-one job search dashboard that kills the messy
+              spreadsheet
+            </h1>
+            <p className="mt-4 text-lg text-white/90">
+              Resumes, cover letters, and applications flow into one clear
+              dashboard in minutes, so you can stay organized and land
+              interviews faster.
+            </p>
+            <div className="mt-8 flex flex-col sm:flex-row gap-3">
+              <Link
+                href="/app"
+                className="inline-flex items-center justify-center rounded-lg bg-white text-purple-700 font-semibold px-7 py-3 shadow-md hover:brightness-80 transition-normal duration-200"
+              >
+                Start Free
+              </Link>
 
-        <div className="relative h-[380px] md:h-[460px] flex items-center justify-center flex-5">
-          <div className="relative z-10 mx-auto h-[68%] w-auto rounded-xl overflow-hidden">
+              <Link
+                href="/features"
+                className="inline-flex items-center justify-center rounded-lg border-2 border-white text-white bg-white/20 font-semibold px-7 py-3 hover:brightness-80 transition-normal duration-200"
+              >
+                See Features
+              </Link>
+            </div>
+            <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-xs text-white/85">
+              <li className="flex items-center gap-2">
+                <span className="h-2 w-2 bg-emerald-400 rounded-full" /> No
+                credit card needed
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="h-2 w-2 bg-emerald-400 rounded-full" />{' '}
+                Unlimited access during Early Access
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="h-2 w-2 bg-emerald-400 rounded-full" /> Export
+                or delete data anytime
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div className="flex-1 relative w-full">
+          <div className="relative z-10 w-full mx-auto h-[68%] mr-0 rounded-xl overflow-hidden">
             <Image
               src={heroImage}
               alt="App preview"
-              className="h-full w-auto ring-1 ring-white/20 shadow-2xl"
+              className="w-full ring-1 ring-white/20 shadow-2xl"
             />
           </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FeaturesObjectionSection() {
+  const features = [
+    {
+      title: 'Ditch the Spreadsheet Chaos',
+      objection: '“I already track my jobs in a messy Google Sheet.”',
+      description:
+        'Spreadsheets weren’t built for resumes, deadlines, or interviews. TrackifyJobs gives you one clear dashboard with statuses, resume scoring, and reminders — no tabs, no formulas.',
+      icon: <CheckCircle className="w-6 h-6 text-emerald-400" />,
+    },
+    {
+      title: 'Stop Copy-Pasting Everything',
+      objection: '“It takes too long to update trackers.”',
+      description:
+        'Manual data entry kills momentum. With TrackifyJobs, you can add jobs from links in seconds, auto-categorize applications, and keep notes + follow-ups inline without the busywork.',
+      icon: <CheckCircle className="w-6 h-6 text-emerald-400" />,
+    },
+    {
+      title: 'Actually Get More Interviews',
+      objection: '“Does this really help me get hired?”',
+      description:
+        'Every resume is scored with instant suggestions. Follow-ups are tracked so you never ghost a recruiter. You see what’s working and what’s not — applications don’t just pile up, they turn into interviews.',
+      icon: <CheckCircle className="w-6 h-6 text-emerald-400" />,
+    },
+  ];
+
+  return (
+    <section className="relative py-20 bg-gray-50 text-gray-900">
+      <div className="mx-auto max-w-6xl px-6 lg:px-8">
+        <div className="text-center mb-16">
+          <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight text-gray-900">
+            More than a spreadsheet — built for how people actually get hired
+          </h2>
+          <p className="mt-4 max-w-2xl mx-auto text-lg text-gray-600">
+            Job seekers told us the same things over and over: spreadsheets are
+            messy, trackers are overpriced, and nothing actually helps you land
+            interviews. We listened — and built the fixes in from the start.
+          </p>
+        </div>
+
+        <div className="grid gap-10 md:grid-cols-3">
+          {features.map((feature, index) => (
+            <div
+              key={index}
+              className="bg-white rounded-2xl border border-gray-300 p-8 flex flex-col"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                {feature.icon}
+                <h3 className="text-xl font-semibold">{feature.title}</h3>
+              </div>
+              <p className="italic text-gray-500 mb-3">{feature.objection}</p>
+              <p className="text-gray-700 flex-1">{feature.description}</p>
+
+              {/* placeholder for UI screenshot / image */}
+              <div className="mt-6 h-40 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
+                UI Screenshot Here
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-16 flex justify-center">
+          <a
+            href="/features"
+            className="inline-flex items-center justify-center rounded-lg bg-purple-600 text-white font-semibold px-8 py-4 shadow-md hover:bg-purple-700 hover:shadow-lg transition"
+          >
+            See How It Works
+          </a>
         </div>
       </div>
     </section>
@@ -167,110 +409,6 @@ function BenefitsCards() {
               </div>
               <h3 className="mt-3 text-lg font-semibold">{b.title}</h3>
               <p className="mt-2 text-gray-600">{b.desc}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* =========================
-   FEATURES  • alternating rows
-   ========================= */
-function FeatureAlternating() {
-  const features = [
-    {
-      title: 'Resume parsing',
-      desc: 'Upload your resume and get structured output for fast edits.',
-      bullets: [
-        'Structured JSON output',
-        'Auto detected sections and dates',
-        'Quick formatting fixes',
-      ],
-    },
-    {
-      title: 'ATS optimization',
-      desc: 'Check alignment with postings and strengthen your wording.',
-      bullets: [
-        'Relevance checks',
-        'Keyword suggestions with context',
-        'Action verb and metric prompts',
-      ],
-    },
-    {
-      title: 'Cover letters',
-      desc: 'Draft letters that match your resume and the role.',
-      bullets: [
-        'Company specific hooks',
-        'Tone controls and length targets',
-        'Instant regenerate',
-      ],
-    },
-    {
-      title: 'Application tracking',
-      desc: 'Keep roles, contacts, and next steps in one view.',
-      bullets: [
-        'Stages for applied and interview and offer',
-        'Notes and reminders',
-        'Sort and filter by company and date',
-      ],
-    },
-  ];
-
-  return (
-    <section className="py-20 bg-white">
-      <div className="max-w-6xl mx-auto px-4 space-y-12">
-        <h2 className="text-3xl font-bold text-center">
-          Everything you need in one flow
-        </h2>
-        <div className="space-y-10">
-          {features.map((f, i) => (
-            <div
-              key={f.title}
-              className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center"
-            >
-              <div
-                className={`md:col-span-6 ${i % 2 === 1 ? 'md:order-2' : ''}`}
-              >
-                <div className="rounded-2xl border border-gray-200 p-6 bg-white">
-                  <span className="inline-block text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
-                    Feature
-                  </span>
-                  <h3 className="text-2xl font-semibold mt-2">{f.title}</h3>
-                  <p className="mt-2 text-gray-600">{f.desc}</p>
-                  <ul className="mt-3 list-disc pl-5 text-sm text-gray-700 space-y-1">
-                    {f.bullets.map((b) => (
-                      <li key={b}>{b}</li>
-                    ))}
-                  </ul>
-                  <Link
-                    href="/features"
-                    className="inline-block mt-4 text-sm text-purple-700 hover:underline"
-                  >
-                    Learn more
-                  </Link>
-                </div>
-              </div>
-              <div
-                className={`md:col-span-6 ${i % 2 === 1 ? 'md:order-1' : ''}`}
-              >
-                {/* Reuse hero assets for abstract mockups */}
-                <div className="relative h-64 rounded-2xl overflow-hidden ring-1 ring-purple-200/40 bg-gradient-to-br from-purple-50 to-white">
-                  <Image
-                    src={SvgM2}
-                    alt=""
-                    className="absolute inset-0 opacity-30"
-                    aria-hidden
-                  />
-                  <Image
-                    src={SvgM1}
-                    alt=""
-                    className="absolute left-16 top-6 h-[65%] opacity-60"
-                    aria-hidden
-                  />
-                </div>
-              </div>
             </div>
           ))}
         </div>
@@ -553,35 +691,86 @@ function FAQAccordions() {
   );
 }
 
-/* =========================
-   FINAL CTA  • clean gradient block
-   ========================= */
 function FinalCTA() {
   return (
-    <section className="py-20 bg-gradient-to-b from-purple-700 to-purple-900 text-white text-center">
-      <div className="max-w-2xl mx-auto px-4">
-        <h2 className="text-3xl font-extrabold">
-          Get organized and move faster
+    <section className="relative py-20 bg-purple-700 text-white">
+      <div className="mx-auto max-w-4xl px-6 text-center">
+        <h2 className="text-3xl md:text-4xl font-extrabold leading-tight">
+          Stop fighting spreadsheets. Start landing interviews.
         </h2>
-        <p className="mt-3 text-white/90">
-          Start today and keep unlimited access during Early Access. Upgrade
-          later when plans go live.
+        <p className="mt-4 text-lg text-purple-100 max-w-2xl mx-auto">
+          TrackifyJobs organizes your applications, scores your resumes, and
+          keeps your job search moving — so you can focus on getting hired, not
+          on managing tabs.
         </p>
-        <div className="mt-6 flex justify-center gap-3">
-          <Link
+
+        <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
+          <a
             href="/app"
-            className="inline-flex items-center justify-center rounded-lg bg-white text-purple-700 font-semibold px-6 py-3 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            className="inline-flex items-center justify-center rounded-lg bg-white text-purple-700 font-semibold px-8 py-4 shadow-md hover:bg-gray-100 hover:shadow-lg transition"
           >
             Start Free
-          </Link>
-          <Link
+          </a>
+          <a
             href="/features"
-            className="inline-flex items-center justify-center rounded-lg ring-1 ring-white/40 bg-white/10 text-white font-semibold px-6 py-3 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            className="inline-flex items-center justify-center rounded-lg border border-white text-white font-semibold px-8 py-4 hover:bg-white hover:text-purple-700 transition"
           >
             Learn More
-          </Link>
+          </a>
         </div>
-        <p className="mt-3 text-xs text-white/80">No credit card required</p>
+      </div>
+    </section>
+  );
+}
+
+function FoundersNote() {
+  return (
+    <section className="relative py-20 bg-white">
+      <div className="mx-auto max-w-3xl px-6 text-center">
+        <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 mb-6">
+          A Note From Our Team
+        </h2>
+
+        <div className="text-lg text-gray-700 space-y-6">
+          {/* 1/ Put yourself in their shoes */}
+          <p>
+            We know what it feels like to be buried in a job search — a dozen
+            tabs open, half-filled spreadsheets, and the sinking feeling that
+            something important just slipped through the cracks.
+          </p>
+
+          {/* 2/ Explain their problem */}
+          <p>
+            The problem is simple but brutal: spreadsheets weren’t built for job
+            hunting. They don’t remind you to follow up. They don’t tell you why
+            your resume isn’t getting callbacks. And the tools that claim to
+            help? They’re often overpriced or clunky.
+          </p>
+
+          {/* 3/ Take ownership */}
+          <p>
+            That’s why we built TrackifyJobs. We wanted a tool that was fast,
+            clear, and actually made a difference in landing interviews. No
+            fluff. No bloat. Just the essentials that help job seekers win.
+          </p>
+
+          {/* 4/ Show the happy ending */}
+          <p>
+            Today, TrackifyJobs is helping students and grads organize the chaos
+            of job hunting into one clean dashboard. The result? Less time
+            juggling tabs, more time focusing on the opportunities that matter —
+            and a faster path to “you’re hired.”
+          </p>
+        </div>
+
+        <div className="mt-10">
+          <p className="text-sm font-semibold text-gray-900">
+            — The TrackifyJobs Team
+          </p>
+          <p className="text-sm text-gray-500">
+            Built by job seekers, for job seekers
+          </p>
+        </div>
       </div>
     </section>
   );
