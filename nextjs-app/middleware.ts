@@ -2,11 +2,22 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  const token = request.cookies.get('auth-token');
+  const token = request.cookies.get('auth-token')?.value;
+  const { pathname } = request.nextUrl;
 
-  console.log(token);
+  // If user is signed in, block access to login/signup
+  if (
+    token &&
+    (pathname.startsWith('/login') || pathname.startsWith('/signup'))
+  ) {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
+  }
 
-  if (!token) {
+  // If user is not signed in, block access to dashboard/settings
+  if (
+    !token &&
+    (pathname.startsWith('/dashboard') || pathname.startsWith('/settings'))
+  ) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
@@ -14,5 +25,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/settings/:path*'],
+  matcher: ['/login', '/signup', '/dashboard/:path*', '/settings/:path*'],
 };

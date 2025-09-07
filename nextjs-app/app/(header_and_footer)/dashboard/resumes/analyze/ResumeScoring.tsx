@@ -183,12 +183,13 @@ const ResumeScoring: ForwardRefRenderFunction<ResumeScoringHandle, Props> = (
         method: 'POST',
         body: formData,
         headers: { Authorization: `Bearer ${idToken}` },
+        signal: AbortSignal.timeout(60 * 1000),
       });
 
       if (!res.ok) throw new Error((await res.text()) || 'Server error');
 
       const data = await res.json();
-      console.log(data)
+      console.log(data);
       setScoreData(data as ScoreData);
     } catch (err: any) {
       setError(err.message || 'Something went wrong');
@@ -200,29 +201,28 @@ const ResumeScoring: ForwardRefRenderFunction<ResumeScoringHandle, Props> = (
 
   useImperativeHandle(ref, () => ({ triggerScoring: handleSubmit }));
 
-function countSkills(skills) {
-  return Object.values(
-    skills.reduce((acc, s) => {
-      const name = typeof s === "string" ? s : s.name;
-      if (!acc[name]) {
-        acc[name] = { name, count: 0 };
+  function countSkills(skills) {
+    return Object.values(
+      skills.reduce((acc, s) => {
+        const name = typeof s === 'string' ? s : s.name;
+        if (!acc[name]) {
+          acc[name] = { name, count: 0 };
+        }
+        acc[name].count += 1;
+        return acc;
+      }, {})
+    ).sort((a, b) => {
+      if (b.count === a.count) {
+        return a.name.localeCompare(b.name); // alphabetical if counts are equal
       }
-      acc[name].count += 1;
-      return acc;
-    }, {})
-  ).sort((a, b) => {
-    if (b.count === a.count) {
-      return a.name.localeCompare(b.name); // alphabetical if counts are equal
-    }
-    return b.count - a.count; // higher count first
-  });
-}
-
+      return b.count - a.count; // higher count first
+    });
+  }
 
   const scores = [
-      scoreData?.average_hard_skill_similarity ?? 0,
-      scoreData?.max_similarity ?? 0,
-      scoreData?.ai_score ?? 0,
+    scoreData?.average_hard_skill_similarity ?? 0,
+    scoreData?.max_similarity ?? 0,
+    scoreData?.ai_score ?? 0,
   ];
 
   const score = scores.sort((a, b) => a - b)[1];
@@ -230,11 +230,10 @@ function countSkills(skills) {
   // Color from red to green based on score
 
   function getColorOfScore(score) {
-      const hue = clamp((score / 100) * 120); // 0 red to 120 green
-  const scoreColor = `hsl(${Math.round(hue)}, 80%, 40%)`;
-  return scoreColor
+    const hue = clamp((score / 100) * 120); // 0 red to 120 green
+    const scoreColor = `hsl(${Math.round(hue)}, 80%, 40%)`;
+    return scoreColor;
   }
-
 
   return (
     <Section
@@ -295,7 +294,10 @@ function countSkills(skills) {
               <div className="flex flex-wrap gap-4 text-sm">
                 <div>
                   <span className="text-gray-600">Overall Match</span>{' '}
-                  <span className="font-semibold" style={{ color: getColorOfScore(score) }}>
+                  <span
+                    className="font-semibold"
+                    style={{ color: getColorOfScore(score) }}
+                  >
                     {clamp(score).toFixed(1)}%
                   </span>
                 </div>
@@ -323,7 +325,8 @@ function countSkills(skills) {
           </Panel>
 
           <Panel title="Matched Skills" tone="default">
-            {scoreData.matched_hard_skills && scoreData.matched_hard_skills.length > 0 ? (
+            {scoreData.matched_hard_skills &&
+            scoreData.matched_hard_skills.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {[...scoreData.matched_hard_skills]
                   .sort((a, b) => pct(b.similarity) - pct(a.similarity))
@@ -376,7 +379,9 @@ function countSkills(skills) {
             <div className="space-y-2">
               <div className="text-sm font-medium text-gray-700">Primary</div>
               <ChipList
-                items={countSkills(scoreData.job_soft_skills).map((s) => `${s.name} (${s.count})`)}
+                items={countSkills(scoreData.job_soft_skills).map(
+                  (s) => `${s.name} (${s.count})`
+                )}
                 tone="blue"
               />
             </div>
@@ -386,7 +391,9 @@ function countSkills(skills) {
             <div className="space-y-2">
               <div className="text-sm font-medium text-gray-700">Primary</div>
               <ChipList
-                items={countSkills(scoreData.job_soft_skills).map((s) => `${s.name} (${s.count})`)}
+                items={countSkills(scoreData.job_soft_skills).map(
+                  (s) => `${s.name} (${s.count})`
+                )}
                 tone="blue"
               />
             </div>

@@ -88,7 +88,7 @@ export default function ResumeRewriter({
 
       // Step 3: Open resume editor
       const query = compressToEncodedURIComponent(JSON.stringify(resultData));
-      window.open(`/create-resume?custom_resume=${query}`, '_blank');
+      window.open(`/dashboard/resumes/create?custom_resume=${query}`, '_blank');
     } catch (err: any) {
       setError(err.message || 'Failed to rewrite resume');
     } finally {

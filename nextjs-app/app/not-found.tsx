@@ -1,24 +1,46 @@
 import Link from 'next/link';
+import '@/app/globals.css';
 
-const Custom404 = () => {
+export default function NotFound() {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center bg-gray-100 px-4 text-center text-black">
-      <h1 className="text-8xl font-bold text-red-500">404</h1>
-      <p className="mt-4 text-lg">
-        Oops! The page you are looking for does not exist.
-      </p>
-      <p className="mt-2 text-md text-gray-600">
-        The page you’re looking for might have been removed or never existed.
-      </p>
-      <Link
-        href="/"
-        aria-label="Return to homepage"
-        className="mt-6 inline-block rounded-md bg-orange-500 px-8 py-2 transition-all duration-300 text-white hover:bg-[#000d]"
-      >
-        Go Home
-      </Link>
-    </div>
-  );
-};
+    <main className="relative flex min-h-screen flex-col items-center justify-center bg-white px-6 text-center overflow-hidden">
+      {/* Background watermark */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-[50rem] font-extrabold text-gray-100/40 select-none pointer-events-none">
+          404
+        </span>
+      </div>
 
-export default Custom404;
+      {/* Foreground content */}
+      <div className="relative z-10 flex flex-col items-center">
+        <h1 className="text-9xl font-extrabold text-indigo-600">404</h1>
+
+        <h2 className="mt-4 text-2xl font-semibold text-gray-900">
+          Page not found
+        </h2>
+
+        <p className="mt-2 max-w-md text-gray-600">
+          The page you’re looking for doesn’t exist, has been moved, or is
+          temporarily unavailable.
+        </p>
+
+        <div className="mt-8 flex gap-4">
+          <Link
+            href="/"
+            aria-label="Return to homepage"
+            className="rounded-md bg-indigo-600 px-6 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700"
+          >
+            Go Home
+          </Link>
+          <Link
+            href="/contact"
+            aria-label="Contact support"
+            className="rounded-md border border-gray-300 px-6 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+          >
+            Contact Support
+          </Link>
+        </div>
+      </div>
+    </main>
+  );
+}

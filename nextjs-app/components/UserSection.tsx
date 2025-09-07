@@ -4,6 +4,7 @@ import { auth } from '@/lib/firebase'; // make sure this imports your initialize
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useEffect, useRef, useState } from 'react';
 
 export default function UserSection() {
   const { user, loading } = useAuth();
@@ -42,14 +43,7 @@ export default function UserSection() {
               </span>
             </Link>
           </li>
-          <li className="flex items-center">
-            <button
-              onClick={handleLogout}
-              className="transition duration-300 border-2 border-white text-white px-4 py-2 rounded-md hover:bg-orange-500 hover:text-white"
-            >
-              Logout
-            </button>
-          </li>
+          <UserMenu user={user} handleLogout={handleLogout} />
         </>
       ) : (
         <>
@@ -70,5 +64,84 @@ export default function UserSection() {
         </>
       )}
     </>
+  );
+}
+
+function UserMenu({
+  user,
+  handleLogout,
+}: {
+  user: any;
+  handleLogout: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLLIElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside);
+    } else {
+      document.removeEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [open]);
+
+  return (
+    <li ref={menuRef} className="relative">
+      {/* User Icon */}
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-10 h-10 bg-white/25 border-white border-2 rounded-full font-bold flex items-center justify-center cursor-pointer"
+      >
+        {user.email.slice(0, 1).toUpperCase()}
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <ul className="absolute left-[50%] translate-x-[-50%] mt-2 w-44 bg-white text-gray-800 border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+          {/* Settings */}
+          <li>
+            <a
+              href="/settings"
+              className="block w-full px-4 py-2 text-left hover:bg-gray-100 transition"
+            >
+              Settings
+            </a>
+          </li>
+
+          {/* Checkout */}
+          <li>
+            <a
+              href="/checkout"
+              className="block w-full px-4 py-2 text-left hover:bg-gray-100 transition"
+            >
+              Checkout
+            </a>
+          </li>
+
+          {/* Divider */}
+          <li className="border-t border-gray-200 my-1"></li>
+
+          {/* Logout - standout */}
+          <li>
+            <button
+              onClick={handleLogout}
+              className="w-full px-4 py-2 text-left text-red-600 font-semibold hover:bg-red-50 transition cursor-pointer"
+            >
+              Logout
+            </button>
+          </li>
+        </ul>
+      )}
+    </li>
   );
 }

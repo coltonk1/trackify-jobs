@@ -17,12 +17,12 @@ const Navbar = () => {
   return (
     <nav
       id="navbar"
-      className="p-3 text-white sticky top-0 z-100 backdrop-blur-lg"
+      className="p-4 text-white sticky top-0 z-100 backdrop-blur-lg"
       style={{ boxShadow: '0 0 10px #9242d77f' }}
     >
       <div className="container mx-auto flex items-center justify-between gap-8">
         <Link href="/" className="text-2xl font-bold">
-          TrackifyJobs
+          Trackify<span className="font-normal">Jobs</span>
         </Link>
         <ul className="flex ml-0 mr-auto">
           {links.map((link) => (

@@ -1,6 +1,5 @@
 from datetime import datetime
 import math
-from time import time
 from flask import Flask, request, jsonify
 import re
 from io import BytesIO
@@ -9,35 +8,42 @@ import pdfplumber
 from sentence_transformers import SentenceTransformer, util
 import torch
 import os
-import pandas as pd
 import spacy
 from spacy.matcher import PhraseMatcher
 from skillNer.general_params import SKILL_DB
 from skillNer.skill_extractor_class import SkillExtractor
 import xgboost as xgb
+from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
 
-# --- Setup NLP + SkillNer ---
-nlp = spacy.load("en_core_web_lg")
+# ------------------ SETUP ------------------
+
+# SpaCy + SkillNer
+nlp = spacy.load("en_core_web_md")
 skill_extractor = SkillExtractor(nlp, SKILL_DB, PhraseMatcher)
 
-device = torch.device("cpu")
-model = SentenceTransformer('all-MiniLM-L6-v2', device=device)
+# Embeddings
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = SentenceTransformer("all-MiniLM-L6-v2", device=device)
 
-# --- Load trained XGB regression model ---
+# Resume NER model
+ner_tokenizer = AutoTokenizer.from_pretrained("yashpwr/resume-ner-bert-v2")
+ner_model = AutoModelForTokenClassification.from_pretrained("yashpwr/resume-ner-bert-v2")
+ner_pipeline = pipeline("ner", model=ner_model, tokenizer=ner_tokenizer, aggregation_strategy="simple")
+
+# Regression model
 script_dir = os.path.dirname(os.path.abspath(__file__))
 scoring_model = xgb.XGBRegressor(tree_method="hist", device="cpu", n_jobs=1)
-scoring_model.load_model(script_dir + "/xgboost_resume_match_model_v2.json")
+scoring_model.load_model(os.path.join(script_dir, "xgboost_resume_match_model_v2.json"))
 
 app = Flask(__name__)
 
 # ------------------ UTILITIES ------------------
 
 def clean_text(text: str) -> str:
-    text = text.replace("\n", " ").lower()
-    return re.sub(r"\s+", " ", text).strip()
+    return re.sub(r"\s+", " ", text.replace("\n", " ").lower()).strip()
 
 def extract_phrases(text):
-    lines = re.split(r'[\n.;•\-]+', text)
+    lines = re.split(r"[\n.;•\-]+", text)
     return [line.strip() for line in lines if len(line.strip()) > 4]
 
 def embed_phrases(phrases):
@@ -71,8 +77,21 @@ def extract_with_skillner(text):
                 extracted.append({
                     "skill_id": skill_id,
                     "name": entry["skill_name"].lower(),
-                    "type": entry["skill_type"]  # hard, soft, certification
+                    "type": entry["skill_type"]
                 })
+    return extracted
+
+def extract_with_ner(text):
+    """Use resume-ner-bert-v2 to extract SKILL entities."""
+    entities = ner_pipeline(text)
+    extracted = []
+    for ent in entities:
+        if ent["entity_group"].upper() == "SKILL":
+            extracted.append({
+                "skill_id": None,  # resume NER doesn’t map to SKILL_DB ids
+                "name": ent["word"].lower(),
+                "type": "Hard Skill"  # default, can refine if needed
+            })
     return extracted
 
 def split_skills(skills):
@@ -81,38 +100,64 @@ def split_skills(skills):
     certs = [s for s in skills if s["type"] == "Certification"]
     return hard, soft, certs
 
+# ------------------ FILTERING HELPERS ------------------
+
+FALSE_POSITIVES = {"b", "bs", "ms", "cs", "c.s."}
+WHITELIST = {"r", "c"}
+
+def context_clean(text, skills):
+    text_lower = text.lower()
+    filtered = []
+    for s in skills:
+        name = s["name"]
+        if name in FALSE_POSITIVES:
+            continue
+        if len(name) == 1 and name not in WHITELIST:
+            continue
+        if re.search(r"(b\.s\.|m\.s\.|ph\.d|degree|bachelor|master)", text_lower):
+            if re.search(rf"\b{name}\b", text_lower):
+                continue
+        filtered.append(s)
+    return filtered
+
 # ------------------ SCORING ------------------
 
 def compute_skill_similarity(job_skills, resume_skills):
-    """Return avg similarity and matched pairs between two skill sets."""
     if not job_skills or not resume_skills:
         return 0.0, 0.0, []
 
-    job_names = [s["name"] for s in job_skills]
-    resume_names = [s["name"] for s in resume_skills]
+    unique_job = {s["name"]: s for s in job_skills}
+    unique_resume = {s["name"]: s for s in resume_skills}
 
-    emb_resume_skills = embed_phrases(resume_names)
-    emb_job_skills = embed_phrases(job_names)
+    job_names = list(unique_job.keys())
+    resume_names = list(unique_resume.keys())
 
-    skill_sim_matrix = util.cos_sim(emb_job_skills, emb_resume_skills)
-    skill_top_similarities = skill_sim_matrix.max(dim=1).values.cpu().numpy()
+    emb_resume = embed_phrases(resume_names)
+    emb_job = embed_phrases(job_names)
 
-    avg_sim = float(round(np.mean(skill_top_similarities) * 100, 2))
-    max_sim = float(round(np.max(skill_top_similarities) * 100, 2))
+    sim_matrix = util.cos_sim(emb_job, emb_resume)
+    skill_top_sim = sim_matrix.max(dim=1).values.cpu().numpy()
+
+    avg_sim = float(round(np.mean(skill_top_sim) * 100, 2))
+    max_sim = float(round(np.max(skill_top_sim) * 100, 2))
 
     matched = []
+    used_resume = set()
     for i, job_skill in enumerate(job_names):
-        j = torch.argmax(skill_sim_matrix[i]).item()
-        matched.append({
-            "job_skill": job_skills[i],
-            "closest_resume_skill": resume_skills[j],
-            "similarity": float(round(skill_sim_matrix[i][j].item() * 100, 2))
-        })
+        j = torch.argmax(sim_matrix[i]).item()
+        if j not in used_resume:
+            matched.append({
+                "job_skill": unique_job[job_skill],
+                "closest_resume_skill": unique_resume[resume_names[j]],
+                "similarity": float(round(sim_matrix[i][j].item() * 100, 2))
+            })
+            used_resume.add(j)
 
     return avg_sim, max_sim, matched
 
+# ------------------ MAIN SCORING PIPELINE ------------------
+
 def score_resume_vs_job(resume_text, job_description):
-    resume_text = clean_text(resume_text)
     job_description = clean_text(job_description)
 
     # Phrase-level similarity
@@ -129,35 +174,38 @@ def score_resume_vs_job(resume_text, job_description):
     avg_score = np.mean(top_similarities)
     max_score = np.max(top_similarities)
 
-    # SkillNer extraction
-    resume_skills = extract_with_skillner(resume_text)
-    job_skills = extract_with_skillner(job_description)
+    # --- Skill extraction (both methods) ---
+    skills_sn_resume = extract_with_skillner(resume_text)
+    skills_sn_job = extract_with_skillner(job_description)
+    skills_ner_resume = extract_with_ner(resume_text)
+    skills_ner_job = extract_with_ner(job_description)
 
-    # Split skills by type
+    # Combine & deduplicate
+    resume_skills = {s["name"]: s for s in skills_sn_resume + skills_ner_resume}.values()
+    job_skills = {s["name"]: s for s in skills_sn_job + skills_ner_job}.values()
+
+    resume_skills = context_clean(resume_text, list(resume_skills))
+    job_skills = context_clean(job_description, list(job_skills))
+
+    # Split
     resume_hard, resume_soft, resume_certs = split_skills(resume_skills)
     job_hard, job_soft, job_certs = split_skills(job_skills)
 
-    # Compute similarities
-    hard_avg_sim, hard_max_sim, hard_matches = compute_skill_similarity(job_hard, resume_hard)
-    soft_avg_sim, soft_max_sim, soft_matches = compute_skill_similarity(job_soft, resume_soft)
-    cert_avg_sim, cert_max_sim, cert_matches = compute_skill_similarity(job_certs, resume_certs)
+    # Similarities
+    hard_avg, hard_max, hard_matches = compute_skill_similarity(job_hard, resume_hard)
+    soft_avg, soft_max, soft_matches = compute_skill_similarity(job_soft, resume_soft)
+    cert_avg, cert_max, cert_matches = compute_skill_similarity(job_certs, resume_certs)
 
-    # Weighted score: balance semantic & skills
-    weighted_score = max_score * 0.5 + (hard_avg_sim / 100) * 0.3 + (soft_avg_sim / 100) * 0.2
-    final_score = nonlinear_boost(weighted_score)
+    # Weighted score
+    weighted = max_score * 0.5 + (hard_avg / 100) * 0.3 + (soft_avg / 100) * 0.2
+    final_score = nonlinear_boost(weighted)
+    final_score = min(max(final_score, avg_score), max_score)
 
-    if final_score < avg_score:
-        final_score = avg_score
-    elif final_score > max_score * 1.2:
-        final_score = max_score * 1.2
-    if final_score > max_score:
-        final_score = max_score
-
-    # Regression model score
-    job_results = np.array([[float(round(avg_score * 100, 2)),
-                             hard_avg_sim,
-                             float(round(max_score * 100, 2))]])
-    predicted_score = float(scoring_model.predict(job_results)[0])
+    # Regression model
+    job_features = np.array([[float(round(avg_score * 100, 2)),
+                              hard_avg,
+                              float(round(max_score * 100, 2))]])
+    predicted_score = float(scoring_model.predict(job_features)[0])
 
     return {
         "average_similarity": float(round(avg_score * 100, 2)),
@@ -171,16 +219,16 @@ def score_resume_vs_job(resume_text, job_description):
         "job_soft_skills": job_soft,
         "job_certifications": job_certs,
 
-        "average_hard_skill_similarity": hard_avg_sim,
-        "max_hard_skill_similarity": hard_max_sim,
+        "average_hard_skill_similarity": hard_avg,
+        "max_hard_skill_similarity": hard_max,
         "matched_hard_skills": hard_matches,
 
-        "average_soft_skill_similarity": soft_avg_sim,
-        "max_soft_skill_similarity": soft_max_sim,
+        "average_soft_skill_similarity": soft_avg,
+        "max_soft_skill_similarity": soft_max,
         "matched_soft_skills": soft_matches,
 
-        "average_certification_similarity": cert_avg_sim,
-        "max_certification_similarity": cert_max_sim,
+        "average_certification_similarity": cert_avg,
+        "max_certification_similarity": cert_max,
         "matched_certifications": cert_matches,
 
         "ai_score": predicted_score
@@ -188,26 +236,26 @@ def score_resume_vs_job(resume_text, job_description):
 
 # ------------------ API ------------------
 
-@app.route('/rank-resumes', methods=['POST'])
+@app.route("/rank-resumes", methods=["POST"])
 def rank_resumes():
     start_time = datetime.now()
 
-    file = request.files['file']
-    if not file.filename.endswith('.pdf'):
-        return jsonify({'error': 'Only PDF files are allowed'}), 400
+    file = request.files["file"]
+    if not file.filename.endswith(".pdf"):
+        return jsonify({"error": "Only PDF files are allowed"}), 400
     if file.content_length > 5 * 1024 * 1024:
-        return jsonify({'error': 'File size exceeds 5MB limit'}), 413
+        return jsonify({"error": "File size exceeds 5MB limit"}), 413
 
-    job_description = request.form.get('job_description', '')
+    job_description = request.form.get("job_description", "")
     if not isinstance(job_description, str):
-        return jsonify({'error': 'Job description must be a string'}), 400
+        return jsonify({"error": "Job description must be a string"}), 400
     if len(job_description) > 10000:
-        return jsonify({'error': 'Job description is too long'}), 400
+        return jsonify({"error": "Job description is too long"}), 400
 
     pdf_file = BytesIO(file.stream.read())
     resume_text = extract_text_from_pdf(pdf_file)
     if not resume_text:
-        return jsonify({'error': 'Failed to extract text from PDF'}), 400
+        return jsonify({"error": "Failed to extract text from PDF"}), 400
 
     result = score_resume_vs_job(resume_text, job_description)
 
@@ -216,5 +264,5 @@ def rank_resumes():
 
     return jsonify(result)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run()
