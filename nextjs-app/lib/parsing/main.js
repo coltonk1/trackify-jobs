@@ -244,11 +244,14 @@ async function getWorkExperience(SECTIONS, page) {
     return item.str.includes(',');
   };
 
+  const hasWords = (item) => {};
+
   let output = [];
 
   subsections.forEach((subsection) => {
     let job = getBestItem(subsection, [
       [hasJobTitle, 10],
+      [hasLettersOrSpace, 1],
       [hasMoreThanFiveWords, -3],
       [hasNumber, -5],
     ]);

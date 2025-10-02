@@ -13,6 +13,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       items: [
         { href: '/dashboard', label: 'Overview' },
         { href: '/dashboard/applications', label: 'Applications' },
+        { href: '/dashboard/applications/new', label: 'Applications' },
         { href: '/dashboard/files', label: 'Files' },
       ],
     },

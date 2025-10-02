@@ -130,7 +130,19 @@ function ResumeDocument({ data }) {
             ))}
           </View>
         )}
-
+        {skills && Object.keys(skills).length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.subHeader}>Skills</Text>
+            {Object.entries(skills).map(([category, items], i) => (
+              <View key={i} style={{ marginBottom: 2 }}>
+                <Text hyphenationCallback={(word) => [word]}>
+                  <Text style={{ fontWeight: 'bold' }}>{category}: </Text>
+                  <Text>{items.join(', ')}</Text>
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
         {experience?.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.subHeader}>Experience</Text>
@@ -177,20 +189,6 @@ function ResumeDocument({ data }) {
                     </Text>
                   </View>
                 ))}
-              </View>
-            ))}
-          </View>
-        )}
-
-        {skills && Object.keys(skills).length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.subHeader}>Skills</Text>
-            {Object.entries(skills).map(([category, items], i) => (
-              <View key={i} style={{ marginBottom: 2 }}>
-                <Text hyphenationCallback={(word) => [word]}>
-                  <Text style={{ fontWeight: 'bold' }}>{category}: </Text>
-                  <Text>{items.join(', ')}</Text>
-                </Text>
               </View>
             ))}
           </View>
@@ -560,6 +558,16 @@ export default function ResumeBuilder() {
                 />
                 <input
                   className="w-full mb-2 rounded border px-2 py-1 text-sm"
+                  value={exp.date}
+                  placeholder="Date"
+                  onChange={(e) => {
+                    const copy = [...form.experience];
+                    copy[i].date = e.target.value;
+                    setForm((f) => ({ ...f, experience: copy }));
+                  }}
+                />
+                <input
+                  className="w-full mb-2 rounded border px-2 py-1 text-sm"
                   value={exp.company}
                   placeholder="Company"
                   onChange={(e) => {
@@ -578,6 +586,19 @@ export default function ResumeBuilder() {
                     setForm((f) => ({ ...f, experience: copy }));
                   }}
                 />
+
+                {/* Remove button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const copy = [...form.experience];
+                    copy.splice(i, 1);
+                    setForm((f) => ({ ...f, experience: copy }));
+                  }}
+                  className="mt-2 text-xs text-red-600 hover:underline"
+                >
+                  Remove
+                </button>
               </div>
             ))}
             <button
@@ -614,6 +635,16 @@ export default function ResumeBuilder() {
                     setForm((f) => ({ ...f, projects: copy }));
                   }}
                 />
+                <input
+                  className="w-full mb-2 rounded border px-2 py-1 text-sm"
+                  value={proj.date}
+                  placeholder="Project Date"
+                  onChange={(e) => {
+                    const copy = [...form.projects];
+                    copy[i].date = e.target.value;
+                    setForm((f) => ({ ...f, projects: copy }));
+                  }}
+                />
                 <textarea
                   className="w-full rounded border px-2 py-1 text-sm font-mono"
                   value={proj.bullets.join('\n')}
@@ -631,7 +662,10 @@ export default function ResumeBuilder() {
               onClick={() =>
                 setForm((f) => ({
                   ...f,
-                  projects: [...f.projects, { name: '', bullets: [''] }],
+                  projects: [
+                    ...f.projects,
+                    { name: '', bullets: [''], date: '' },
+                  ],
                 }))
               }
               className="text-sm text-indigo-600 hover:underline"

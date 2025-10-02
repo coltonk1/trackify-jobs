@@ -208,7 +208,7 @@ Return **only** a valid JSON object in this structure:
 	resp, err := client.CreateChatCompletion(
 		context.Background(),
 		openai.ChatCompletionRequest{
-			Model: "gpt-5-nano",
+			Model: openai.GPT4Dot1Mini,
 			Messages: []openai.ChatCompletionMessage{
 				{Role: openai.ChatMessageRoleSystem, Content: injectedPrompt},
 				{Role: openai.ChatMessageRoleUser, Content: userPrompt},

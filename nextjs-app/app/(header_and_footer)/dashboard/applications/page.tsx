@@ -1,7 +1,6 @@
-// app/dashboard/applications/page.tsx
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import {
   BarChart,
@@ -17,81 +16,55 @@ import {
 } from 'recharts';
 
 type Application = {
-  id: number;
+  id: string;
   company: string;
-  position: string;
+  jobTitle: string;
   status: 'Need to Apply' | 'Applied' | 'Interview' | 'Offer' | 'Rejected';
-  date: string; // ISO string YYYY-MM-DD
-  notes?: string;
+  dateApplied?: string;
+  dateClosing?: string;
+  link?: string;
   jobDescription?: string;
-  resume?: string;
-  coverLetter?: string;
+  notes?: string;
+  resumeName?: string;
+  coverLetterName?: string;
 };
 
 export default function ApplicationsPage() {
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'date' | 'company'>('date');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
 
-  // Dummy data – replace with DB fetch
-  const applications: Application[] = [
-    {
-      id: 1,
-      company: 'Google',
-      position: 'Software Engineer',
-      status: 'Interview',
-      date: '2025-08-20',
-      notes: 'Scheduled phone screen next week.',
-      jobDescription: 'https://careers.google.com/jobs/123',
-      resume: 'resume_v3.pdf',
-      coverLetter: 'google_cover_letter.pdf',
-    },
-    {
-      id: 2,
-      company: 'Amazon',
-      position: 'Backend Developer',
-      status: 'Need to Apply',
-      date: '2025-08-18',
-      notes: 'Reminder for this weekend.',
-      jobDescription: 'https://amazon.jobs/456',
-    },
-    {
-      id: 3,
-      company: 'Meta',
-      position: 'Full-Stack Engineer',
-      status: 'Rejected',
-      date: '2025-08-15',
-      notes: 'Reapply in 6 months.',
-    },
-    {
-      id: 4,
-      company: 'Microsoft',
-      position: 'AI Research Intern',
-      status: 'Offer',
-      date: '2025-08-12',
-    },
-    {
-      id: 5,
-      company: 'Stripe',
-      position: 'Backend Engineer',
-      status: 'Applied',
-      date: '2025-08-05',
-    },
-    {
-      id: 6,
-      company: 'Netflix',
-      position: 'Data Engineer',
-      status: 'Applied',
-      date: '2025-07-28',
-    },
-  ];
+  // Load from localStorage on mount
+  useEffect(() => {
+    const stored = localStorage.getItem('applications');
+    if (stored) {
+      try {
+        setApplications(JSON.parse(stored));
+      } catch {
+        setApplications([]);
+      }
+    }
+  }, []);
+
+  const saveToStorage = (apps: Application[]) => {
+    localStorage.setItem('applications', JSON.stringify(apps));
+    setApplications(apps);
+  };
 
   const selectedApp = applications.find((a) => a.id === selectedId);
 
-  const handleRowClick = (id: number) => {
+  const handleRowClick = (id: string) => {
     setSelectedId(selectedId === id ? null : id);
+  };
+
+  const handleDelete = (id: string) => {
+    if (!confirm('Are you sure you want to delete this application?')) return;
+    const updated = applications.filter((app) => app.id !== id);
+    saveToStorage(updated);
+    setSelectedId(null);
   };
 
   // === Filtering ===
@@ -101,12 +74,13 @@ export default function ApplicationsPage() {
   }
   if (dateFrom) {
     filteredApps = filteredApps.filter(
-      (app) => new Date(app.date) >= new Date(dateFrom)
+      (app) =>
+        app.dateApplied && new Date(app.dateApplied) >= new Date(dateFrom)
     );
   }
   if (dateTo) {
     filteredApps = filteredApps.filter(
-      (app) => new Date(app.date) <= new Date(dateTo)
+      (app) => app.dateApplied && new Date(app.dateApplied) <= new Date(dateTo)
     );
   }
 
@@ -115,7 +89,10 @@ export default function ApplicationsPage() {
     if (sortBy === 'company') {
       return a.company.localeCompare(b.company);
     }
-    return new Date(b.date).getTime() - new Date(a.date).getTime();
+    return (
+      new Date(b.dateApplied || 0).getTime() -
+      new Date(a.dateApplied || 0).getTime()
+    );
   });
 
   // === Chart data ===
@@ -139,8 +116,10 @@ export default function ApplicationsPage() {
   const chartDataTimeline = useMemo(() => {
     const map: Record<string, number> = {};
     filteredApps.forEach((app) => {
-      const d = app.date;
-      map[d] = (map[d] || 0) + 1;
+      const d = app.dateApplied;
+      if (d) {
+        map[d] = (map[d] || 0) + 1;
+      }
     });
     return Object.entries(map)
       .map(([date, count]) => ({ date, count }))
@@ -148,11 +127,11 @@ export default function ApplicationsPage() {
   }, [filteredApps]);
 
   const statusColors: Record<Application['status'], string> = {
-    'Need to Apply': '#9CA3AF', // gray
-    Applied: '#3B82F6', // blue
-    Interview: '#F59E0B', // yellow
-    Offer: '#10B981', // green
-    Rejected: '#EF4444', // red
+    'Need to Apply': '#9CA3AF',
+    Applied: '#3B82F6',
+    Interview: '#F59E0B',
+    Offer: '#10B981',
+    Rejected: '#EF4444',
   };
 
   return (
@@ -213,9 +192,8 @@ export default function ApplicationsPage() {
         </div>
       </div>
 
-      {/* Controls: Sort + Filter */}
+      {/* Controls */}
       <div className="flex flex-wrap items-center gap-4">
-        {/* Sort */}
         <div>
           <label className="mr-2 text-sm font-medium text-gray-700">
             Sort by:
@@ -229,8 +207,6 @@ export default function ApplicationsPage() {
             <option value="company">Company</option>
           </select>
         </div>
-
-        {/* Status Filter */}
         <div>
           <label className="mr-2 text-sm font-medium text-gray-700">
             Status:
@@ -248,8 +224,6 @@ export default function ApplicationsPage() {
             <option value="Rejected">Rejected</option>
           </select>
         </div>
-
-        {/* Date Filter */}
         <div>
           <label className="mr-2 text-sm font-medium text-gray-700">
             From:
@@ -272,17 +246,17 @@ export default function ApplicationsPage() {
         </div>
       </div>
 
-      {/* Master–Detail Layout */}
+      {/* Master–Detail */}
       <div className="flex gap-6">
-        {/* Applications Table */}
         <div className="flex-1 overflow-x-auto bg-white rounded-xl shadow border border-gray-100">
           <table className="min-w-full text-sm text-left">
             <thead className="bg-gray-50 text-gray-600 uppercase text-xs font-semibold">
               <tr>
                 <th className="px-6 py-3">Company</th>
-                <th className="px-6 py-3">Position</th>
+                <th className="px-6 py-3">Job Title</th>
                 <th className="px-6 py-3">Status</th>
-                <th className="px-6 py-3">Date</th>
+                <th className="px-6 py-3">Applied</th>
+                <th className="px-6 py-3">Closing</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -297,20 +271,24 @@ export default function ApplicationsPage() {
                   <td className="px-6 py-4 font-medium text-gray-900">
                     {app.company}
                   </td>
-                  <td className="px-6 py-4">{app.position}</td>
+                  <td className="px-6 py-4">{app.jobTitle}</td>
                   <td className="px-6 py-4">
                     <span
                       className="px-2 py-1 text-xs rounded-full font-semibold"
                       style={{
-                        backgroundColor:
-                          statusColors[app.status] + '20' /* faded */,
+                        backgroundColor: statusColors[app.status] + '20',
                         color: statusColors[app.status],
                       }}
                     >
                       {app.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-gray-600">{app.date}</td>
+                  <td className="px-6 py-4 text-gray-600">
+                    {app.dateApplied || '-'}
+                  </td>
+                  <td className="px-6 py-4 text-gray-600">
+                    {app.dateClosing || '-'}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -321,27 +299,29 @@ export default function ApplicationsPage() {
         {selectedApp && (
           <div className="w-96 bg-white rounded-xl shadow border border-gray-200 p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              {selectedApp.company} – {selectedApp.position}
+              {selectedApp.company} – {selectedApp.jobTitle}
             </h3>
-            <p className="text-sm text-gray-500 mb-4">
-              {selectedApp.status === 'Need to Apply'
-                ? 'Not submitted yet'
-                : `Applied on ${selectedApp.date}`}
-            </p>
+            {selectedApp.dateApplied && (
+              <p className="text-sm text-gray-500 mb-2">
+                Applied on {selectedApp.dateApplied}
+              </p>
+            )}
+            {selectedApp.dateClosing && (
+              <p className="text-sm text-gray-500 mb-2">
+                Closing {selectedApp.dateClosing}
+              </p>
+            )}
 
-            {/* Info */}
             <div className="space-y-3 text-sm">
               <div>
                 <span className="font-medium text-gray-700">Status:</span>{' '}
                 {selectedApp.status}
               </div>
-              {selectedApp.jobDescription && (
+              {selectedApp.link && (
                 <div>
-                  <span className="font-medium text-gray-700">
-                    Application Link:
-                  </span>{' '}
+                  <span className="font-medium text-gray-700">Job Link:</span>{' '}
                   <a
-                    href={selectedApp.jobDescription}
+                    href={selectedApp.link}
                     target="_blank"
                     className="text-purple-600 hover:underline"
                   >
@@ -349,18 +329,28 @@ export default function ApplicationsPage() {
                   </a>
                 </div>
               )}
-              {selectedApp.resume && (
+              {selectedApp.jobDescription && (
                 <div>
-                  <span className="font-medium text-gray-700">Resume:</span>{' '}
-                  {selectedApp.resume}
+                  <span className="font-medium text-gray-700">
+                    Description:
+                  </span>
+                  <p className="mt-1 text-gray-600">
+                    {selectedApp.jobDescription}
+                  </p>
                 </div>
               )}
-              {selectedApp.coverLetter && (
+              {selectedApp.resumeName && (
+                <div>
+                  <span className="font-medium text-gray-700">Resume:</span>{' '}
+                  {selectedApp.resumeName}
+                </div>
+              )}
+              {selectedApp.coverLetterName && (
                 <div>
                   <span className="font-medium text-gray-700">
                     Cover Letter:
                   </span>{' '}
-                  {selectedApp.coverLetter}
+                  {selectedApp.coverLetterName}
                 </div>
               )}
               {selectedApp.notes && (
@@ -371,62 +361,15 @@ export default function ApplicationsPage() {
               )}
             </div>
 
-            {/* Auto-Generated Todos */}
-            <div className="mt-6">
-              <h4 className="text-sm font-semibold text-gray-800 mb-2">
-                Suggested To-Dos
-              </h4>
-              <ul className="list-disc list-inside text-sm space-y-1 text-gray-700">
-                {(() => {
-                  const todos: string[] = [];
-                  const today = new Date();
-                  const appliedDate = new Date(selectedApp.date);
-                  const daysSince = Math.floor(
-                    (today.getTime() - appliedDate.getTime()) /
-                      (1000 * 60 * 60 * 24)
-                  );
-
-                  if (selectedApp.status === 'Need to Apply') {
-                    todos.push('Submit application soon.');
-                  }
-                  if (selectedApp.status === 'Applied') {
-                    if (daysSince >= 7) {
-                      todos.push(
-                        'Follow up with recruiter (applied over a week ago).'
-                      );
-                    } else {
-                      todos.push(
-                        'Wait for response. Consider follow up after 7 days.'
-                      );
-                    }
-                  }
-                  if (selectedApp.status === 'Interview') {
-                    if (daysSince <= 2) {
-                      todos.push('Send thank-you email for interview.');
-                    } else {
-                      todos.push('Prepare for next interview round.');
-                    }
-                  }
-                  if (selectedApp.status === 'Offer') {
-                    todos.push('Review and respond to the offer.');
-                  }
-                  if (selectedApp.status === 'Rejected') {
-                    todos.push(
-                      'Log rejection reason. Consider applying again in 6 months.'
-                    );
-                  }
-
-                  return todos.map((t, i) => <li key={i}>{t}</li>);
-                })()}
-              </ul>
-            </div>
-
-            {/* Panel Actions */}
+            {/* Actions */}
             <div className="mt-6 flex justify-between">
               <button className="px-3 py-1 rounded-md bg-purple-600 text-white hover:bg-purple-700 text-sm">
                 Edit
               </button>
-              <button className="px-3 py-1 rounded-md bg-red-100 text-red-600 hover:bg-red-200 text-sm">
+              <button
+                onClick={() => handleDelete(selectedApp.id)}
+                className="px-3 py-1 rounded-md bg-red-100 text-red-600 hover:bg-red-200 text-sm"
+              >
                 Delete
               </button>
             </div>
