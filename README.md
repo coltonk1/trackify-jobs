@@ -22,6 +22,8 @@ This project is a work in progress and may contain bugs, incomplete features, an
 
 ## License
 TrackifyJobs is proprietary software.  
+This repository is public for transparency and portfolio purposes, but it is **not open source**.  
+All rights are reserved. You may view the code, but you may not copy, modify, distribute, or use it in your own projects.
 
 - You may use the hosted service at [trackifyjobs.com](https://trackifyjobs.com).  
 - You may not copy, modify, distribute, or self-host this codebase.  
