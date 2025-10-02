@@ -17,8 +17,8 @@ This project is a work in progress and may contain bugs, incomplete features, an
 
 ## Tech Stack
 - Frontend: Next.js / React, TailwindCSS  
-- Backend: Supabase, Firebase Auth, Node.js / Python services  
-- Infrastructure: Vercel hosting, Cloudflare domain management  
+- Backend: Supabase, Firebase Auth, Golang / Python services
+- Hosting: Self-hosted Ubuntu server
 
 ## License
 TrackifyJobs is proprietary software.  
